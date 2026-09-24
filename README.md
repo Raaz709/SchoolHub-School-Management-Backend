@@ -18,12 +18,11 @@ The database includes all requested domains and tables, initialized automaticall
 - **EVENTS**: `Events`, `EventParticipants`
 - **SYSTEM**: `FilesMetadata`, `AuditLogs`
 
-## Complete Feature & API Coverage
-- **Teacher Portal API (`/api/teacher/...`)**: My classes, subjects, attendance history.
-- **Student Portal API (`/api/portals/student/dashboard`)**: Attendance percentage, pending assignments, upcoming exam, unread notifications.
-- **Parent Portal API (`/api/portals/parent/children`)**: Multi-child switching and child overview.
-- **Reports API (`/api/reports/...`)**: Students by class/section analytics and fee collection reports.
-- **Admin Management API**: Teachers, parents, classes, subjects, attendance, assignments, exams, fees, timetable, announcements, events, audit logs.
+## Complete Feature & Security Coverage
+- **File Management API (`/api/files/upload`)**: Upload assignment attachments, submissions, profile pictures, and store metadata in PostgreSQL (`FilesMetadata`).
+- **Global Exception Middleware**: Production-grade error handling and logging.
+- **Teacher, Student & Parent Portals**: Dashboards, child switching, attendance %, and results.
+- **Admin Management API**: Complete CRUD & management for students, teachers, parents, classes, subjects, attendance, exams, fees, timetable, announcements, events, and audit logs.
 - **Authentication & Security (`/api/auth`)**: Login, Register, JWT Access & Refresh Tokens.
 - **Documentation & Health**: Swagger UI (`/swagger`) and Health Check (`/health`).
 
