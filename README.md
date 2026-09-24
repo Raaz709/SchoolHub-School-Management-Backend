@@ -18,20 +18,19 @@ The database includes all requested domains and tables, initialized automaticall
 - **EVENTS**: `Events`, `EventParticipants`
 - **SYSTEM**: `AuditLogs`
 
-## Complete Feature & API Coverage
-- **Project Setup & Docker**: Clean architecture (.NET 8 Web API) containerized with Docker Compose.
-- **Authentication & Authorization**: Register, Login, JWT Access Tokens, Refresh Token rotation, Role-based authorization (`/api/auth`).
-- **Student Management**: CRUD & student profile registration (`/api/students`).
-- **Teacher Management**: CRUD & teacher department assignment (`/api/teachers`).
-- **Academic Management**: Academic years, classes, sections, and subjects (`/api/academic`, `/api/schoolextensions/academic-years`).
-- **Attendance**: Session marking, student status, and history (`/api/attendance`).
-- **Assignments**: Assignment creation and student submission handling (`/api/assignments`).
-- **Exams & Results**: Exam management, mark entry, automated grading and calculation (`/api/exams`).
-- **Fee Management**: Fee structures and payment recording (`/api/fees`).
-- **Timetable & Schedule**: Timetable entries and time slots (`/api/schoolextensions/timetable`).
-- **Announcements & Notifications**: Publishing announcements and system notifications (`/api/announcements`, `/api/schoolextensions/notifications`).
-- **Events**: School events scheduling (`/api/schoolextensions/events`).
-- **Audit Logs**: Administrative action tracking (`/api/auditlogs`).
+## Complete Feature & Admin Capabilities
+- **Admin Student Management**:
+  - Add student (`POST /api/students`)
+  - Edit student (`PUT /api/students/{id}`)
+  - View student details & list (`GET /api/students`, `GET /api/students/{id}`)
+  - Delete/deactivate student (`PATCH /api/students/{id}/deactivate`)
+  - Search & filter students (`GET /api/students/search?query=...&classId=...&sectionId=...`)
+  - Assign student to class/section (`POST /api/students/{id}/assign-class`)
+  - View student attendance (`GET /api/students/{id}/attendance`)
+  - View student results (`GET /api/students/{id}/results`)
+  - View student fees (`GET /api/students/{id}/fees`)
+  - View student assignments (`GET /api/students/{id}/assignments`)
+- **Other Modules**: Teachers, Academic, Attendance, Assignments, Exams, Fees, Timetable, Announcements, Events, Audit Logs.
 - **Documentation & Health**: Swagger UI (`/swagger`) and Health Check (`/health`).
 
 ### Getting Started & Testing
