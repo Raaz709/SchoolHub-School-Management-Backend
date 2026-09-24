@@ -13,6 +13,11 @@ Production-quality School Management System API built with C# / ASP.NET Core Web
 - Configured Entity Framework Core with PostgreSQL (`Npgsql.EntityFrameworkCore.PostgreSQL`)
 - Added `docker-compose.yml` and `Dockerfile` for containerizing PostgreSQL and ASP.NET Core API services.
 
+### Milestone 3: Database Entities & Initial Migration
+- Created comprehensive domain models (`User`, `RefreshToken`, `ClassRoom`, `StudentProfile`, `TeacherProfile`, `ParentProfile`, `Subject`, `Attendance`, `Exam`, `ExamResult`, `Fee`, `Notice`, `EventItem`, `Tenant`).
+- Configured EF Core `SchoolHubDbContext` with relationships and indexes.
+- Created initial EF Core migration (`InitialCreate`).
+
 ### Getting Started with Docker
 1. Ensure Docker Desktop is running.
 2. Run `docker-compose up --build` from the root directory to spin up PostgreSQL and the API.
