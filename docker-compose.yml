@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: schoolhub_postgres
+    environment:
+      POSTGRES_DB: schoolhub_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  api:
+    build:
+      context: ./SchoolHub.API
+      dockerfile: Dockerfile
+    container_name: schoolhub_api
+    ports:
+      - "5000:80"
+      - "5001:443"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__DefaultConnection=Host=postgres;Database=schoolhub_db;Username=postgres;Password=postgres
+    depends_on:
+      - postgres
+
+volumes:
+  postgres_data:

@@ -2,26 +2,17 @@
 
 Production-quality School Management System API built with C# / ASP.NET Core Web API, Entity Framework Core, and PostgreSQL.
 
-## Milestone 1: Backend Repository Setup
+## Milestones & Architecture
 
-### Architecture & Stack
-- **Framework**: C# / ASP.NET Core Web API (.NET 8)
-- **Database & ORM**: PostgreSQL with Entity Framework Core (multi-tenant ready design)
-- **API Documentation**: Swagger / OpenAPI
-- **Health Check**: `/health` endpoint
+### Milestone 1: Backend Repository Setup
+- C# / ASP.NET Core Web API (.NET 8)
+- Clean architecture foundation (`Controllers`, `Services`, `Data`, `Models`, `DTOs`)
+- Swagger / OpenAPI documentation & Health Check endpoint (`/health`)
 
-### Project Structure
-- `SchoolHub.API/`
-  - `Controllers/` - API endpoints (Health check)
-  - `Data/` - EF Core `SchoolHubDbContext`
-  - `Models/` - Domain entities (`Tenant`)
-  - `Services/` - Business logic layer (to be expanded)
-  - `DTOs/` - Data transfer objects (to be expanded)
+### Milestone 2: PostgreSQL + EF Core & Docker Setup
+- Configured Entity Framework Core with PostgreSQL (`Npgsql.EntityFrameworkCore.PostgreSQL`)
+- Added `docker-compose.yml` and `Dockerfile` for containerizing PostgreSQL and ASP.NET Core API services.
 
-### Configuration
-Connection strings and application settings are configured via `appsettings.json` and environment variables (`ConnectionStrings__DefaultConnection`).
-
-### Getting Started
-1. Ensure .NET 8 SDK and PostgreSQL are installed.
-2. Run `dotnet restore` and `dotnet build` inside `SchoolHub.API`.
-3. Run `dotnet run --project SchoolHub.API` to start the API and access Swagger at `https://localhost:5001/swagger`.
+### Getting Started with Docker
+1. Ensure Docker Desktop is running.
+2. Run `docker-compose up --build` from the root directory to spin up PostgreSQL and the API.
