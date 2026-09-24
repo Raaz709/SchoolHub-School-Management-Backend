@@ -1,0 +1,167 @@
+🎓 Project idea: SchoolHub
+
+One backend, two clients:
+
+                    ASP.NET Core API
+                           │
+             ┌─────────────┴─────────────┐
+             ↓                           ↓
+       React + TypeScript          React Native
+          Web Application            Mobile App
+             │                           │
+             └─────────────┬─────────────┘
+                           ↓
+                       SQL Server
+Web application
+
+Different dashboards depending on the account:
+
+Admin
+
+Student management
+Teacher management
+Classes/sections
+Subjects
+Attendance
+Fees
+Exams & results
+Timetable
+Notices
+Events
+User/role management
+Reports
+
+Teacher
+
+My classes
+Attendance
+Assignments
+Marks/results
+Timetable
+Notices
+Student information
+
+Student
+
+Dashboard
+Attendance
+Homework/assignments
+Results
+Timetable
+Notices
+Events
+
+Parent
+
+Child's attendance
+Results
+Homework
+Fees
+Notices
+School events
+📱 Mobile app
+
+This is where your project becomes much more interesting.
+
+Students/parents could use the mobile app for:
+
+🔔 Push notifications
+📅 Timetable
+📊 Attendance
+📝 Assignments
+📈 Results
+💰 Fee information
+📢 School notices
+🗓️ Events
+👨‍👩‍👧 Multiple children under one parent account
+
+Teachers could use it for:
+
+Taking attendance
+Viewing classes
+Updating assignments
+Entering marks
+Receiving notifications
+🔥 Features that make it interview-worthy
+
+Instead of only CRUD, include things like:
+
+Attendance
+
+Teacher opens Class 10A
+        ↓
+Selects date
+        ↓
+Marks students Present/Absent/Late
+        ↓
+API validates
+        ↓
+Database transaction
+        ↓
+Parent/student gets notification
+
+Examination
+
+Exam created
+ ↓
+Subjects assigned
+ ↓
+Teacher enters marks
+ ↓
+Validation
+ ↓
+Result calculated
+ ↓
+Student/parent sees result
+
+Role-based authorization
+
+Admin
+  ↓
+Everything
+
+Teacher
+  ↓
+Only assigned classes
+
+Student
+  ↓
+Own information
+
+Parent
+  ↓
+Children's information
+
+That gives you real examples of authorization, business rules, database relationships, API design and frontend state management to discuss during interviews.
+
+🧱 Your stack
+
+I'd use:
+
+Web:
+React + TypeScript
+Vite
+Tailwind
+TanStack Query
+
+Mobile:
+React Native + TypeScript
+Expo
+
+Backend:
+C#
+ASP.NET Core Web API
+Entity Framework Core
+JWT
+SignalR
+
+Database:
+SQL Server
+
+DevOps:
+Docker
+GitHub Actions
+
+And I'd make the web and mobile apps consume the exact same ASP.NET Core API.
+
+That single architectural decision makes the project much more impressive than building two completely separate applications.
