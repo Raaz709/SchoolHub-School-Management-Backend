@@ -2,9 +2,9 @@
 
 Production-quality School Management System API built with C# / ASP.NET Core Web API, Dapper, and PostgreSQL.
 
-## Architecture & Database Schema (Dapper + PostgreSQL)
+## Architecture & Complete Database Schema (Dapper + PostgreSQL)
 
-The database is structured into robust modular domains initialized automatically via Dapper on startup:
+The database includes all requested domains and tables, initialized automatically via Dapper on startup:
 
 - **AUTH**: `Users`, `Roles` (Admin, Teacher, Student, Parent), `UserRoles`, `RefreshTokens`
 - **PEOPLE**: `Students`, `Parents`, `StudentParents`, `Teachers`, `Departments`
@@ -18,21 +18,21 @@ The database is structured into robust modular domains initialized automatically
 - **EVENTS**: `Events`, `EventParticipants`
 - **SYSTEM**: `AuditLogs`
 
-## Status & Features
-- **Project Setup**: Clean architecture (.NET 8 Web API).
-- **Docker**: Containerized with PostgreSQL and API services (`docker-compose.up`).
-- **Database & Dapper**: Full multi-domain schema auto-initialized on startup.
-- **Authentication**: Register, Login, and JWT Access + Refresh Token rotation (`/api/auth`).
-- **Student Management API**: CRUD endpoints for students (`/api/students`).
-- **Teacher Management API**: CRUD endpoints for teachers (`/api/teachers`).
-- **Academic API**: Management of Classes, Sections, and Subjects (`/api/academic/...`).
-- **Attendance API**: Attendance session marking and records (`/api/attendance`).
-- **Assignment API**: Assignment creation and student submissions (`/api/assignments`).
-- **Examination & Results API**: Exam management, mark entry, and automated grading (`/api/exams`).
-- **Fee Management API**: Fee structures and payment recording (`/api/fees`).
-- **Announcements API**: Publishing announcements (`/api/announcements`).
-- **Audit Logs API**: Tracking administrative actions (`/api/auditlogs`).
-- **Documentation**: Swagger UI (`/swagger`) and Health Check (`/health`).
+## Complete Feature & API Coverage
+- **Project Setup & Docker**: Clean architecture (.NET 8 Web API) containerized with Docker Compose.
+- **Authentication & Authorization**: Register, Login, JWT Access Tokens, Refresh Token rotation, Role-based authorization (`/api/auth`).
+- **Student Management**: CRUD & student profile registration (`/api/students`).
+- **Teacher Management**: CRUD & teacher department assignment (`/api/teachers`).
+- **Academic Management**: Academic years, classes, sections, and subjects (`/api/academic`, `/api/schoolextensions/academic-years`).
+- **Attendance**: Session marking, student status, and history (`/api/attendance`).
+- **Assignments**: Assignment creation and student submission handling (`/api/assignments`).
+- **Exams & Results**: Exam management, mark entry, automated grading and calculation (`/api/exams`).
+- **Fee Management**: Fee structures and payment recording (`/api/fees`).
+- **Timetable & Schedule**: Timetable entries and time slots (`/api/schoolextensions/timetable`).
+- **Announcements & Notifications**: Publishing announcements and system notifications (`/api/announcements`, `/api/schoolextensions/notifications`).
+- **Events**: School events scheduling (`/api/schoolextensions/events`).
+- **Audit Logs**: Administrative action tracking (`/api/auditlogs`).
+- **Documentation & Health**: Swagger UI (`/swagger`) and Health Check (`/health`).
 
 ### Getting Started & Testing
 1. Ensure Docker Desktop & PostgreSQL are available.
