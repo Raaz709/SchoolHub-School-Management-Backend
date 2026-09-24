@@ -15,6 +15,19 @@
           }
         }
       },
+      "Dapper/2.1.35": {
+        "type": "package",
+        "compile": {
+          "lib/net7.0/Dapper.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/net7.0/Dapper.dll": {
+            "related": ".xml"
+          }
+        }
+      },
       "Humanizer.Core/2.14.1": {
         "type": "package",
         "compile": {
@@ -1145,6 +1158,27 @@
         "lib/netstandard2.0/BCrypt.Net-Next.xml",
         "lib/netstandard2.1/BCrypt.Net-Next.dll",
         "lib/netstandard2.1/BCrypt.Net-Next.xml",
+        "readme.md"
+      ]
+    },
+    "Dapper/2.1.35": {
+      "sha512": "YKRwjVfrG7GYOovlGyQoMvr1/IJdn+7QzNXJxyMh0YfFF5yvDmTYaJOVYWsckreNjGsGSEtrMTpnzxTUq/tZQw==",
+      "type": "package",
+      "path": "dapper/2.1.35",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "Dapper.png",
+        "dapper.2.1.35.nupkg.sha512",
+        "dapper.nuspec",
+        "lib/net461/Dapper.dll",
+        "lib/net461/Dapper.xml",
+        "lib/net5.0/Dapper.dll",
+        "lib/net5.0/Dapper.xml",
+        "lib/net7.0/Dapper.dll",
+        "lib/net7.0/Dapper.xml",
+        "lib/netstandard2.0/Dapper.dll",
+        "lib/netstandard2.0/Dapper.xml",
         "readme.md"
       ]
     },
@@ -3078,6 +3112,7 @@
   "projectFileDependencyGroups": {
     "net8.0": [
       "BCrypt.Net-Next >= 4.0.3",
+      "Dapper >= 2.1.35",
       "Microsoft.AspNetCore.Authentication.JwtBearer >= 8.0.8",
       "Microsoft.AspNetCore.OpenApi >= 8.0.31",
       "Microsoft.EntityFrameworkCore >= 8.0.8",
@@ -3132,6 +3167,10 @@
           "BCrypt.Net-Next": {
             "target": "Package",
             "version": "[4.0.3, )"
+          },
+          "Dapper": {
+            "target": "Package",
+            "version": "[2.1.35, )"
           },
           "Microsoft.AspNetCore.Authentication.JwtBearer": {
             "target": "Package",

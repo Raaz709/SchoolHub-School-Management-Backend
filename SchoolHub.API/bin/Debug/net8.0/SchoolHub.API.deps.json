@@ -9,6 +9,7 @@
       "SchoolHub.API/1.0.0": {
         "dependencies": {
           "BCrypt.Net-Next": "4.0.3",
+          "Dapper": "2.1.35",
           "Microsoft.AspNetCore.Authentication.JwtBearer": "8.0.8",
           "Microsoft.AspNetCore.OpenApi": "8.0.31",
           "Microsoft.EntityFrameworkCore": "8.0.8",
@@ -26,6 +27,14 @@
           "lib/net6.0/BCrypt.Net-Next.dll": {
             "assemblyVersion": "4.0.3.0",
             "fileVersion": "4.0.3.0"
+          }
+        }
+      },
+      "Dapper/2.1.35": {
+        "runtime": {
+          "lib/net7.0/Dapper.dll": {
+            "assemblyVersion": "2.0.0.0",
+            "fileVersion": "2.1.35.13827"
           }
         }
       },
@@ -660,6 +669,13 @@
       "sha512": "sha512-W+U9WvmZQgi5cX6FS5GDtDoPzUCV4LkBLkywq/kRZhuDwcbavOzcDAr3LXJFqHUi952Yj3LEYoWW0jbEUQChsA==",
       "path": "bcrypt.net-next/4.0.3",
       "hashPath": "bcrypt.net-next.4.0.3.nupkg.sha512"
+    },
+    "Dapper/2.1.35": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-YKRwjVfrG7GYOovlGyQoMvr1/IJdn+7QzNXJxyMh0YfFF5yvDmTYaJOVYWsckreNjGsGSEtrMTpnzxTUq/tZQw==",
+      "path": "dapper/2.1.35",
+      "hashPath": "dapper.2.1.35.nupkg.sha512"
     },
     "Humanizer.Core/2.14.1": {
       "type": "package",

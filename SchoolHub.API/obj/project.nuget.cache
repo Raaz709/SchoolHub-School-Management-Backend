@@ -1,10 +1,11 @@
 {
   "version": 2,
-  "dgSpecHash": "SJEAX4ybCBc=",
+  "dgSpecHash": "PMTVcEo7QI4=",
   "success": true,
   "projectFilePath": "C:\\SchoolHub Backend\\SchoolHub.API\\SchoolHub.API.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\Raj\\.nuget\\packages\\bcrypt.net-next\\4.0.3\\bcrypt.net-next.4.0.3.nupkg.sha512",
+    "C:\\Users\\Raj\\.nuget\\packages\\dapper\\2.1.35\\dapper.2.1.35.nupkg.sha512",
     "C:\\Users\\Raj\\.nuget\\packages\\humanizer.core\\2.14.1\\humanizer.core.2.14.1.nupkg.sha512",
     "C:\\Users\\Raj\\.nuget\\packages\\microsoft.aspnetcore.authentication.jwtbearer\\8.0.8\\microsoft.aspnetcore.authentication.jwtbearer.8.0.8.nupkg.sha512",
     "C:\\Users\\Raj\\.nuget\\packages\\microsoft.aspnetcore.openapi\\8.0.31\\microsoft.aspnetcore.openapi.8.0.31.nupkg.sha512",

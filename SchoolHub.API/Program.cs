@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using SchoolHub.API.Data;
 using SchoolHub.API.Services;
@@ -12,12 +11,8 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// Configure PostgreSQL with EF Core
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") 
-    ?? "Host=localhost;Database=schoolhub_db;Username=postgres;Password=postgres";
-
-builder.Services.AddDbContext<SchoolHubDbContext>(options =>
-    options.UseNpgsql(connectionString));
+// Register Dapper DbInitializer
+builder.Services.AddSingleton<DbInitializer>();
 
 // JWT Authentication Service & Bearer Setup
 builder.Services.AddScoped<ITokenService, TokenService>();
@@ -44,6 +39,13 @@ builder.Services.AddAuthorization();
 builder.Services.AddHealthChecks();
 
 var app = builder.Build();
+
+// Initialize Dapper PostgreSQL Database Schema on Startup
+using (var scope = app.Services.CreateScope())
+{
+    var dbInitializer = scope.ServiceProvider.GetRequiredService<DbInitializer>();
+    await dbInitializer.InitializeAsync();
+}
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

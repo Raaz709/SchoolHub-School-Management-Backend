@@ -1,27 +1,28 @@
 # SchoolHub Backend
 
-Production-quality School Management System API built with C# / ASP.NET Core Web API, Entity Framework Core, and PostgreSQL.
+Production-quality School Management System API built with C# / ASP.NET Core Web API, Dapper, and PostgreSQL.
 
-## Milestones & Architecture
+## Architecture & Database Schema (Dapper + PostgreSQL)
 
-### Milestone 1: Backend Repository Setup
-- C# / ASP.NET Core Web API (.NET 8)
-- Clean architecture foundation (`Controllers`, `Services`, `Data`, `Models`, `DTOs`)
-- Swagger / OpenAPI documentation & Health Check endpoint (`/health`)
+The database is structured into robust modular domains initialized via Dapper:
 
-### Milestone 2: PostgreSQL + EF Core & Docker Setup
-- Configured Entity Framework Core with PostgreSQL (`Npgsql.EntityFrameworkCore.PostgreSQL`)
-- Added `docker-compose.yml` and `Dockerfile` for containerizing PostgreSQL and ASP.NET Core API services.
+- **AUTH**: `Users`, `Roles` (Admin, Teacher, Student, Parent), `UserRoles`, `RefreshTokens`
+- **PEOPLE**: `Students`, `Parents`, `StudentParents`, `Teachers`, `Departments`
+- **ACADEMIC**: `AcademicYears`, `Classes`, `Sections`, `Subjects`, `ClassSubjects`, `Enrollments`
+- **SCHEDULE**: `TimeSlots`, `TimetableEntries`
+- **ATTENDANCE**: `AttendanceSessions`, `AttendanceRecords`
+- **ASSIGNMENTS**: `Assignments`, `AssignmentSubmissions`
+- **EXAMS**: `Exams`, `ExamSubjects`, `Marks`, `GradeScales`
+- **FEES**: `FeeStructures`, `StudentFees`, `Invoices`, `Payments`
+- **COMMUNICATION**: `Announcements`, `Notifications`, `NotificationRecipients`, `UserDevices`
+- **EVENTS**: `Events`, `EventParticipants`
+- **SYSTEM**: `AuditLogs`
 
-### Milestone 3: Database Entities & Initial Migration
-- Created comprehensive domain models (`User`, `RefreshToken`, `ClassRoom`, `StudentProfile`, `TeacherProfile`, `ParentProfile`, `Subject`, `Attendance`, `Exam`, `ExamResult`, `Fee`, `Notice`, `EventItem`, `Tenant`).
-- Configured EF Core `SchoolHubDbContext` with relationships and indexes.
-- Created initial EF Core migration (`InitialCreate`).
-
-### Milestone 4 & 5: Authentication API & JWT + Refresh Tokens
-- Implemented `AuthController` (`/api/auth/login`, `/api/auth/register`, `/api/auth/refresh-token`).
-- Implemented `TokenService` for generating short-lived JWT Access Tokens and secure crypto random Refresh Tokens with rotation.
-- Configured ASP.NET Core JWT Bearer authentication middleware.
+## Milestones & Features
+1. **Backend Repository Setup**: Clean architecture, Swagger, Health Checks (`/health`).
+2. **PostgreSQL & Docker Setup**: Docker Compose configuration for PostgreSQL and API.
+3. **Database Schema & Dapper**: Automated Dapper-based table initialization across all requested domains and roles on startup.
+4. **Authentication & JWT**: Secure login, registration, and token rotation using Dapper and JWT Bearer authentication.
 
 ### Getting Started with Docker
 1. Ensure Docker Desktop is running.
