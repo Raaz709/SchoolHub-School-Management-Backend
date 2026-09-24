@@ -21,7 +21,7 @@ namespace SchoolHub.API.Data
 
             var schemaSql = @"
                 -- ==========================================
-                -- AUTH
+                -- AUTH & SYSTEM
                 -- ==========================================
                 CREATE TABLE IF NOT EXISTS Roles (
                     Id SERIAL PRIMARY KEY,
@@ -36,8 +36,17 @@ namespace SchoolHub.API.Data
                     Username VARCHAR(100) UNIQUE NOT NULL,
                     Email VARCHAR(255) UNIQUE NOT NULL,
                     PasswordHash VARCHAR(255) NOT NULL,
+                    ProfilePictureUrl VARCHAR(500),
                     IsActive BOOLEAN DEFAULT TRUE,
                     CreatedAt TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE IF NOT EXISTS PasswordResetTokens (
+                    Id SERIAL PRIMARY KEY,
+                    UserId INT REFERENCES Users(Id) ON DELETE CASCADE,
+                    Token VARCHAR(255) NOT NULL,
+                    Expires TIMESTAMP WITH TIME ZONE NOT NULL,
+                    IsUsed BOOLEAN DEFAULT FALSE
                 );
 
                 CREATE TABLE IF NOT EXISTS UserRoles (
@@ -152,7 +161,7 @@ namespace SchoolHub.API.Data
                     SubjectId INT REFERENCES Subjects(Id) ON DELETE CASCADE,
                     TeacherId INT REFERENCES Teachers(Id) ON DELETE SET NULL,
                     TimeSlotId INT REFERENCES TimeSlots(Id) ON DELETE CASCADE,
-                    DayOfWeek INT NOT NULL -- 0=Sunday, 1=Monday, etc.
+                    DayOfWeek INT NOT NULL
                 );
 
                 -- ==========================================
@@ -171,7 +180,7 @@ namespace SchoolHub.API.Data
                     Id SERIAL PRIMARY KEY,
                     SessionId INT REFERENCES AttendanceSessions(Id) ON DELETE CASCADE,
                     StudentId INT REFERENCES Students(Id) ON DELETE CASCADE,
-                    Status VARCHAR(20) NOT NULL, -- Present, Absent, Late, Excused
+                    Status VARCHAR(20) NOT NULL,
                     Remarks TEXT
                 );
 
@@ -185,7 +194,8 @@ namespace SchoolHub.API.Data
                     Title VARCHAR(255) NOT NULL,
                     Description TEXT,
                     DueDate TIMESTAMP WITH TIME ZONE NOT NULL,
-                    MaxScore DECIMAL(5,2)
+                    MaxScore DECIMAL(5,2),
+                    AttachmentUrl VARCHAR(500)
                 );
 
                 CREATE TABLE IF NOT EXISTS AssignmentSubmissions (
@@ -213,7 +223,8 @@ namespace SchoolHub.API.Data
                     Title VARCHAR(255) NOT NULL,
                     AcademicYearId INT REFERENCES AcademicYears(Id) ON DELETE CASCADE,
                     StartDate DATE,
-                    EndDate DATE
+                    EndDate DATE,
+                    PassingMarks DECIMAL(5,2) DEFAULT 40.00
                 );
 
                 CREATE TABLE IF NOT EXISTS ExamSubjects (
@@ -248,7 +259,7 @@ namespace SchoolHub.API.Data
                     StudentId INT REFERENCES Students(Id) ON DELETE CASCADE,
                     FeeStructureId INT REFERENCES FeeStructures(Id) ON DELETE CASCADE,
                     DueDate DATE NOT NULL,
-                    Status VARCHAR(50) DEFAULT 'Pending' -- Pending, Paid, Overdue
+                    Status VARCHAR(50) DEFAULT 'Unpaid' -- Paid, Partially Paid, Unpaid, Overdue
                 );
 
                 CREATE TABLE IF NOT EXISTS Invoices (
@@ -277,21 +288,17 @@ namespace SchoolHub.API.Data
                     Title VARCHAR(255) NOT NULL,
                     Content TEXT NOT NULL,
                     TargetRole VARCHAR(50),
+                    ClassId INT REFERENCES Classes(Id) ON DELETE SET NULL,
                     CreatedAt TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                 );
 
                 CREATE TABLE IF NOT EXISTS Notifications (
                     Id SERIAL PRIMARY KEY,
+                    UserId INT REFERENCES Users(Id) ON DELETE CASCADE,
                     Title VARCHAR(255) NOT NULL,
                     Message TEXT NOT NULL,
-                    CreatedAt TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-                );
-
-                CREATE TABLE IF NOT EXISTS NotificationRecipients (
-                    NotificationId INT REFERENCES Notifications(Id) ON DELETE CASCADE,
-                    UserId INT REFERENCES Users(Id) ON DELETE CASCADE,
                     IsRead BOOLEAN DEFAULT FALSE,
-                    PRIMARY KEY (NotificationId, UserId)
+                    CreatedAt TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                 );
 
                 CREATE TABLE IF NOT EXISTS UserDevices (
@@ -320,12 +327,23 @@ namespace SchoolHub.API.Data
                 );
 
                 -- ==========================================
-                -- SYSTEM
+                -- FILE MANAGEMENT & SYSTEM AUDIT
                 -- ==========================================
+                CREATE TABLE IF NOT EXISTS FilesMetadata (
+                    Id SERIAL PRIMARY KEY,
+                    FileName VARCHAR(255) NOT NULL,
+                    FilePath VARCHAR(500) NOT NULL,
+                    ContentType VARCHAR(100),
+                    UploadedById INT REFERENCES Users(Id) ON DELETE SET NULL,
+                    CreatedAt TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                );
+
                 CREATE TABLE IF NOT EXISTS AuditLogs (
                     Id SERIAL PRIMARY KEY,
                     UserId INT REFERENCES Users(Id) ON DELETE SET NULL,
                     Action VARCHAR(100) NOT NULL,
+                    Entity VARCHAR(100),
+                    EntityId INT,
                     Details TEXT,
                     IpAddress VARCHAR(50),
                     CreatedAt TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP

@@ -6,7 +6,7 @@ Production-quality School Management System API built with C# / ASP.NET Core Web
 
 The database includes all requested domains and tables, initialized automatically via Dapper on startup:
 
-- **AUTH**: `Users`, `Roles` (Admin, Teacher, Student, Parent), `UserRoles`, `RefreshTokens`
+- **AUTH**: `Users`, `Roles` (Admin, Teacher, Student, Parent), `UserRoles`, `RefreshTokens`, `PasswordResetTokens`
 - **PEOPLE**: `Students`, `Parents`, `StudentParents`, `Teachers`, `Departments`
 - **ACADEMIC**: `AcademicYears`, `Classes`, `Sections`, `Subjects`, `ClassSubjects`, `Enrollments`
 - **SCHEDULE**: `TimeSlots`, `TimetableEntries`
@@ -14,23 +14,18 @@ The database includes all requested domains and tables, initialized automaticall
 - **ASSIGNMENTS**: `Assignments`, `AssignmentSubmissions`
 - **EXAMS**: `Exams`, `ExamSubjects`, `Marks`, `GradeScales`
 - **FEES**: `FeeStructures`, `StudentFees`, `Invoices`, `Payments`
-- **COMMUNICATION**: `Announcements`, `Notifications`, `NotificationRecipients`, `UserDevices`
+- **COMMUNICATION**: `Announcements`, `Notifications`, `UserDevices`
 - **EVENTS**: `Events`, `EventParticipants`
-- **SYSTEM**: `AuditLogs`
+- **SYSTEM**: `FilesMetadata`, `AuditLogs`
 
-## Complete Feature & Admin Capabilities
-- **Admin Student Management**:
-  - Add student (`POST /api/students`)
-  - Edit student (`PUT /api/students/{id}`)
-  - View student details & list (`GET /api/students`, `GET /api/students/{id}`)
-  - Delete/deactivate student (`PATCH /api/students/{id}/deactivate`)
-  - Search & filter students (`GET /api/students/search?query=...&classId=...&sectionId=...`)
-  - Assign student to class/section (`POST /api/students/{id}/assign-class`)
-  - View student attendance (`GET /api/students/{id}/attendance`)
-  - View student results (`GET /api/students/{id}/results`)
-  - View student fees (`GET /api/students/{id}/fees`)
-  - View student assignments (`GET /api/students/{id}/assignments`)
-- **Other Modules**: Teachers, Academic, Attendance, Assignments, Exams, Fees, Timetable, Announcements, Events, Audit Logs.
+## Features & API Coverage
+- **Admin Management API (`/api/admin/teachers`, `/api/admin/parents`)**:
+  - Add, edit, view, and deactivate teachers.
+  - Assign subjects to teachers.
+  - Add, edit, link/unlink parents to students, and view parent's children.
+- **Student Management API (`/api/students`)**: Add, edit, view, deactivate, search, filter, assign class, view attendance, results, fees, and assignments.
+- **Authentication & Security (`/api/auth`)**: Login, Register, JWT Access & Refresh Tokens.
+- **Academic, Attendance, Assignments, Exams, Fees, Timetable, Announcements, Events, Audit Logs**: Full multi-domain API support.
 - **Documentation & Health**: Swagger UI (`/swagger`) and Health Check (`/health`).
 
 ### Getting Started & Testing
