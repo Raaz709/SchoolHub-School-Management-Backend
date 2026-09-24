@@ -103,3 +103,12 @@ C:\SchoolHub Backend\SchoolHub.API\obj\Debug\net8.0\refint\SchoolHub.API.dll
 C:\SchoolHub Backend\SchoolHub.API\obj\Debug\net8.0\SchoolHub.API.pdb
 C:\SchoolHub Backend\SchoolHub.API\obj\Debug\net8.0\SchoolHub.API.genruntimeconfig.cache
 C:\SchoolHub Backend\SchoolHub.API\obj\Debug\net8.0\ref\SchoolHub.API.dll
+C:\SchoolHub Backend\SchoolHub.API\bin\Debug\net8.0\BCrypt.Net-Next.dll
+C:\SchoolHub Backend\SchoolHub.API\bin\Debug\net8.0\Microsoft.AspNetCore.Authentication.JwtBearer.dll
+C:\SchoolHub Backend\SchoolHub.API\bin\Debug\net8.0\Microsoft.IdentityModel.Abstractions.dll
+C:\SchoolHub Backend\SchoolHub.API\bin\Debug\net8.0\Microsoft.IdentityModel.JsonWebTokens.dll
+C:\SchoolHub Backend\SchoolHub.API\bin\Debug\net8.0\Microsoft.IdentityModel.Logging.dll
+C:\SchoolHub Backend\SchoolHub.API\bin\Debug\net8.0\Microsoft.IdentityModel.Protocols.dll
+C:\SchoolHub Backend\SchoolHub.API\bin\Debug\net8.0\Microsoft.IdentityModel.Protocols.OpenIdConnect.dll
+C:\SchoolHub Backend\SchoolHub.API\bin\Debug\net8.0\Microsoft.IdentityModel.Tokens.dll
+C:\SchoolHub Backend\SchoolHub.API\bin\Debug\net8.0\System.IdentityModel.Tokens.Jwt.dll
