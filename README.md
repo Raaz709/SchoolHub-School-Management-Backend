@@ -4,7 +4,7 @@ Production-quality School Management System API built with C# / ASP.NET Core Web
 
 ## Architecture & Database Schema (Dapper + PostgreSQL)
 
-The database is structured into robust modular domains initialized via Dapper:
+The database is structured into robust modular domains initialized automatically via Dapper on startup:
 
 - **AUTH**: `Users`, `Roles` (Admin, Teacher, Student, Parent), `UserRoles`, `RefreshTokens`
 - **PEOPLE**: `Students`, `Parents`, `StudentParents`, `Teachers`, `Departments`
@@ -18,12 +18,14 @@ The database is structured into robust modular domains initialized via Dapper:
 - **EVENTS**: `Events`, `EventParticipants`
 - **SYSTEM**: `AuditLogs`
 
-## Milestones & Features
-1. **Backend Repository Setup**: Clean architecture, Swagger, Health Checks (`/health`).
-2. **PostgreSQL & Docker Setup**: Docker Compose configuration for PostgreSQL and API.
-3. **Database Schema & Dapper**: Automated Dapper-based table initialization across all requested domains and roles on startup.
-4. **Authentication & JWT**: Secure login, registration, and token rotation using Dapper and JWT Bearer authentication.
+## Status & Features
+- **Project Setup**: Clean architecture (.NET 8 Web API).
+- **Docker**: Containerized with PostgreSQL and API services (`docker-compose.up`).
+- **Database & Dapper**: Full multi-domain schema auto-initialized on startup.
+- **Authentication**: Register, Login, and JWT Access + Refresh Token rotation (`/api/auth`).
+- **Documentation**: Swagger UI (`/swagger`) and Health Check (`/health`).
 
-### Getting Started with Docker
-1. Ensure Docker Desktop is running.
-2. Run `docker-compose up --build` from the root directory to spin up PostgreSQL and the API.
+### Getting Started & Testing
+1. Ensure Docker Desktop & PostgreSQL are available.
+2. Run `docker-compose up --build` or `dotnet run --project SchoolHub.API`.
+3. Verify build status: `dotnet build` (Succeeds with 0 errors).
