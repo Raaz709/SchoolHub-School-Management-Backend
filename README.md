@@ -23,9 +23,15 @@ The database is structured into robust modular domains initialized automatically
 - **Docker**: Containerized with PostgreSQL and API services (`docker-compose.up`).
 - **Database & Dapper**: Full multi-domain schema auto-initialized on startup.
 - **Authentication**: Register, Login, and JWT Access + Refresh Token rotation (`/api/auth`).
-- **Student Management API**: CRUD endpoints for students (`/api/students`) using Dapper.
-- **Teacher Management API**: CRUD endpoints for teachers (`/api/teachers`) using Dapper.
-- **Academic API**: Management of Classes, Sections, and Subjects (`/api/academic/...`) using Dapper.
+- **Student Management API**: CRUD endpoints for students (`/api/students`).
+- **Teacher Management API**: CRUD endpoints for teachers (`/api/teachers`).
+- **Academic API**: Management of Classes, Sections, and Subjects (`/api/academic/...`).
+- **Attendance API**: Attendance session marking and records (`/api/attendance`).
+- **Assignment API**: Assignment creation and student submissions (`/api/assignments`).
+- **Examination & Results API**: Exam management, mark entry, and automated grading (`/api/exams`).
+- **Fee Management API**: Fee structures and payment recording (`/api/fees`).
+- **Announcements API**: Publishing announcements (`/api/announcements`).
+- **Audit Logs API**: Tracking administrative actions (`/api/auditlogs`).
 - **Documentation**: Swagger UI (`/swagger`) and Health Check (`/health`).
 
 ### Getting Started & Testing
