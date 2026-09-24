@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Npgsql;
 using System.Data;
+using System.Security.Claims;
 
 namespace SchoolHub.API.Controllers
 {
@@ -91,7 +92,9 @@ namespace SchoolHub.API.Controllers
         public async Task<IActionResult> GetNotifications()
         {
             using var db = Connection;
-            return Ok(await db.QueryAsync("SELECT * FROM Notifications ORDER BY CreatedAt DESC"));
+            var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            int.TryParse(userIdStr, out int userId);
+            return Ok(await db.QueryAsync("SELECT * FROM Notifications WHERE UserId = @UserId ORDER BY CreatedAt DESC", new { UserId = userId }));
         }
 
         [HttpPost("notifications")]
@@ -99,9 +102,35 @@ namespace SchoolHub.API.Controllers
         public async Task<IActionResult> CreateNotification([FromBody] CreateNotificationDto dto)
         {
             using var db = Connection;
-            var sql = "INSERT INTO Notifications (Title, Message) VALUES (@Title, @Message) RETURNING Id;";
+            var sql = "INSERT INTO Notifications (UserId, Title, Message) VALUES (@UserId, @Title, @Message) RETURNING Id;";
             var id = await db.ExecuteScalarAsync<int>(sql, dto);
             return Ok(new { Message = "Notification sent successfully", Id = id });
+        }
+
+        [HttpPatch("notifications/{id}/read")]
+        public async Task<IActionResult> MarkNotificationAsRead(int id)
+        {
+            using var db = Connection;
+            await db.ExecuteAsync("UPDATE Notifications SET IsRead = TRUE WHERE Id = @Id", new { Id = id });
+            return Ok(new { Message = "Notification marked as read" });
+        }
+
+        [HttpPatch("notifications/read-all")]
+        public async Task<IActionResult> MarkAllNotificationsAsRead()
+        {
+            using var db = Connection;
+            var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            int.TryParse(userIdStr, out int userId);
+            await db.ExecuteAsync("UPDATE Notifications SET IsRead = TRUE WHERE UserId = @UserId", new { UserId = userId });
+            return Ok(new { Message = "All notifications marked as read" });
+        }
+
+        [HttpDelete("notifications/{id}")]
+        public async Task<IActionResult> DeleteNotification(int id)
+        {
+            using var db = Connection;
+            await db.ExecuteAsync("DELETE FROM Notifications WHERE Id = @Id", new { Id = id });
+            return Ok(new { Message = "Notification deleted" });
         }
     }
 
@@ -133,6 +162,7 @@ namespace SchoolHub.API.Controllers
 
     public class CreateNotificationDto
     {
+        public int UserId { get; set; }
         public string Title { get; set; } = string.Empty;
         public string Message { get; set; } = string.Empty;
     }
