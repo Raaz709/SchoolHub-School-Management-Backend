@@ -18,14 +18,13 @@ The database includes all requested domains and tables, initialized automaticall
 - **EVENTS**: `Events`, `EventParticipants`
 - **SYSTEM**: `FilesMetadata`, `AuditLogs`
 
-## Features & API Coverage
-- **Admin Management API (`/api/admin/teachers`, `/api/admin/parents`)**:
-  - Add, edit, view, and deactivate teachers.
-  - Assign subjects to teachers.
-  - Add, edit, link/unlink parents to students, and view parent's children.
-- **Student Management API (`/api/students`)**: Add, edit, view, deactivate, search, filter, assign class, view attendance, results, fees, and assignments.
+## Complete Feature & API Coverage
+- **Teacher Portal API (`/api/teacher/...`)**: My classes, subjects, attendance history.
+- **Student Portal API (`/api/portals/student/dashboard`)**: Attendance percentage, pending assignments, upcoming exam, unread notifications.
+- **Parent Portal API (`/api/portals/parent/children`)**: Multi-child switching and child overview.
+- **Reports API (`/api/reports/...`)**: Students by class/section analytics and fee collection reports.
+- **Admin Management API**: Teachers, parents, classes, subjects, attendance, assignments, exams, fees, timetable, announcements, events, audit logs.
 - **Authentication & Security (`/api/auth`)**: Login, Register, JWT Access & Refresh Tokens.
-- **Academic, Attendance, Assignments, Exams, Fees, Timetable, Announcements, Events, Audit Logs**: Full multi-domain API support.
 - **Documentation & Health**: Swagger UI (`/swagger`) and Health Check (`/health`).
 
 ### Getting Started & Testing
