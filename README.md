@@ -8,23 +8,24 @@ Production-quality School Management System API built with C# / ASP.NET Core Web
 - **Entities Created**: 26 entities across 11 modules (Auth, People, Academic, Schedule, Attendance, Assignments, Exams, Fees, Communication, Events, System)
 - **ApplicationDbContext**: Comprehensive Fluent API configuration with all relationships, foreign keys, indexes, unique constraints, and delete behaviors
 - **EF Core Migration**: `InitialCreate` generated successfully with all 26 tables
-- **Build Status**: ✅ Succeeded (0 errors, 1 warning)
 
-### Milestone 2: Authentication & Authorization (In Progress)
+### Milestone 2: Dapper Repository Pattern Implementation ✅
+- **Base DapperRepository<T>**: Generic CRUD operations with parameterized queries (`@id`, `@name`, etc.)
+- **Repository Interfaces**: `IUserRepository`, `IStudentRepository`, `ITeacherRepository`, `IParentRepository`, `IClassRepository`, `IRoleRepository`, `IRefreshTokenRepository`
+- **Concrete Repositories**: `UserRepository`, `StudentRepository`, `TeacherRepository`, `ParentRepository`, `ClassRepository`, `RoleRepository`, `RefreshTokenRepository`
+- **Parameterized Queries**: All SQL uses `@parameter` syntax for security and performance
+- **AuthController Refactored**: Uses Dapper repositories instead of EF Core for all data access
+
+### Milestone 3: Authentication & Authorization (In Progress)
 - JWT Access Tokens + Refresh Tokens
 - Role-based authorization (Admin, Teacher, Student, Parent)
 - Secure password hashing with BCrypt
 - Login, Register, Refresh Token endpoints
 
-### Milestone 3: Admin Dashboard & Management (Planned)
+### Milestone 4: Admin Dashboard & Management (Planned)
 - Student, Teacher, Parent CRUD
 - Search, Filter, Pagination
 - Assign Class/Section/Subjects
-
-### Milestone 4: Teacher/Student/Parent Portals (Planned)
-- Dashboards with statistics
-- Attendance, Assignments, Exams, Results, Fees
-- Multi-child switching for parents
 
 ### Milestone 5: Academic & Core Modules (Planned)
 - Attendance, Assignments, Exams & Grading
@@ -35,7 +36,8 @@ Production-quality School Management System API built with C# / ASP.NET Core Web
 ## Architecture
 - **Framework**: C# / ASP.NET Core Web API (.NET 8)
 - **Database**: PostgreSQL with Entity Framework Core + Dapper
-- **ORM**: EF Core with Fluent API
+- **ORM**: EF Core with Fluent API (for migrations)
+- **Data Access**: Dapper with parameterized queries (`@id`, `@name`, `@username`, etc.)
 - **Authentication**: JWT + Refresh Tokens
 - **API Documentation**: Swagger / OpenAPI
 - **Health Check**: `/health` endpoint
@@ -78,7 +80,9 @@ All 11 modules with 26 tables covering:
 - **System**: AuditLogs
 
 ## Dapper Integration
-The application uses **Dapper** for:
-- Database schema initialization on startup (DbInitializer)
-- High-performance queries where needed
-- EF Core is used for migrations and ORM operations
+The application uses **Dapper** for all data access:
+- **Repositories**: Generic `DapperRepository<T>` base class with parameterized queries
+- **Parameterized Queries**: All SQL uses `@parameter` syntax (`@Id`, `@Username`, `@Email`, `@UserId`, etc.)
+- **Connection Management**: `IDbConnection` injected via DI, scoped per request
+- **AuthController**: Fully refactored to use Dapper repositories (`IUserRepository`, `IRoleRepository`, `IRefreshTokenRepository`, etc.)
+- **EF Core**: Retained for migrations only
