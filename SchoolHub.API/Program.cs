@@ -1,16 +1,9 @@
-using DotNetEnv;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using Npgsql;
 using SchoolHub.API.Data;
 using SchoolHub.API.Middleware;
-using SchoolHub.API.Repositories;
 using SchoolHub.API.Services;
-using System.Data;
 using System.Text;
-
-Env.Load();
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -19,27 +12,12 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// PostgreSQL with EF Core (for migrations)
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-
-// Register Dapper connection for repositories
-builder.Services.AddScoped<IDbConnection>(_ => new NpgsqlConnection(connectionString));
-
-// Register Dapper Repositories
-builder.Services.AddScoped<IUserRepository, UserRepository>();
-builder.Services.AddScoped<IStudentRepository, StudentRepository>();
-builder.Services.AddScoped<ITeacherRepository, TeacherRepository>();
-builder.Services.AddScoped<IParentRepository, ParentRepository>();
-builder.Services.AddScoped<IClassRepository, ClassRepository>();
-builder.Services.AddScoped<IRoleRepository, RoleRepository>();
-builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
+// PostgreSQL Connection String
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") 
+    ?? "Host=localhost;Database=schoolhub_db;Username=postgres;Password=postgres";
 
 // Register Dapper DbInitializer
-builder.Services.AddScoped<DbInitializer>();
-
-// PostgreSQL with EF Core (for migrations)
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseNpgsql(connectionString));
+builder.Services.AddSingleton<DbInitializer>(new DbInitializer(connectionString));
 
 // JWT Authentication Service & Bearer Setup
 builder.Services.AddScoped<ITokenService, TokenService>();

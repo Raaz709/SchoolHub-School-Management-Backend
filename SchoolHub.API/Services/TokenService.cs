@@ -1,12 +1,11 @@
 using System;
-using System.Collections.Generic;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
-using SchoolHub.API.Models.Auth;
+using SchoolHub.API.Models;
 
 namespace SchoolHub.API.Services
 {
@@ -30,18 +29,13 @@ namespace SchoolHub.API.Services
 
         public string CreateAccessToken(User user)
         {
-            var roles = user.UserRoles?.Select(ur => ur.Role.Name).ToList() ?? new List<string>();
             var claims = new List<Claim>
             {
                 new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
                 new Claim(ClaimTypes.Name, user.Username),
                 new Claim(ClaimTypes.Email, user.Email),
+                new Claim(ClaimTypes.Role, "User") // Role will be added via claims from DB
             };
-            
-            foreach (var role in roles)
-            {
-                claims.Add(new Claim(ClaimTypes.Role, role));
-            }
 
             var creds = new SigningCredentials(_key, SecurityAlgorithms.HmacSha512Signature);
 

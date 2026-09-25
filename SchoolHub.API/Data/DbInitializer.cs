@@ -8,10 +8,9 @@ namespace SchoolHub.API.Data
     {
         private readonly string _connectionString;
 
-        public DbInitializer(IConfiguration configuration)
+        public DbInitializer(string connectionString)
         {
-            _connectionString = configuration.GetConnectionString("DefaultConnection") 
-                ?? throw new InvalidOperationException("DefaultConnection string not found in configuration");
+            _connectionString = connectionString;
         }
 
         public async Task InitializeAsync()
@@ -299,13 +298,6 @@ namespace SchoolHub.API.Data
                     Message TEXT NOT NULL,
                     IsRead BOOLEAN DEFAULT FALSE,
                     CreatedAt TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-                );
-
-                CREATE TABLE IF NOT EXISTS NotificationRecipients (
-                    NotificationId INT REFERENCES Notifications(Id) ON DELETE CASCADE,
-                    UserId INT REFERENCES Users(Id) ON DELETE CASCADE,
-                    IsRead BOOLEAN DEFAULT FALSE,
-                    PRIMARY KEY (NotificationId, UserId)
                 );
 
                 CREATE TABLE IF NOT EXISTS UserDevices (
