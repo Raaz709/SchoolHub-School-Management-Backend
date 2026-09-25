@@ -293,11 +293,16 @@ namespace SchoolHub.API.Data
 
                 CREATE TABLE IF NOT EXISTS Notifications (
                     Id SERIAL PRIMARY KEY,
-                    UserId INT REFERENCES Users(Id) ON DELETE CASCADE,
                     Title VARCHAR(255) NOT NULL,
                     Message TEXT NOT NULL,
-                    IsRead BOOLEAN DEFAULT FALSE,
                     CreatedAt TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE IF NOT EXISTS NotificationRecipients (
+                    NotificationId INT REFERENCES Notifications(Id) ON DELETE CASCADE,
+                    UserId INT REFERENCES Users(Id) ON DELETE CASCADE,
+                    IsRead BOOLEAN DEFAULT FALSE,
+                    PRIMARY KEY (NotificationId, UserId)
                 );
 
                 CREATE TABLE IF NOT EXISTS UserDevices (
