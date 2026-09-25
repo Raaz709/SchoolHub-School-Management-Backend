@@ -1,11 +1,12 @@
 using System;
+using System.Collections.Generic;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
-using SchoolHub.API.Models;
+using SchoolHub.API.Models.Auth;
 
 namespace SchoolHub.API.Services
 {
@@ -29,20 +30,25 @@ namespace SchoolHub.API.Services
 
         public string CreateAccessToken(User user)
         {
+            var roles = user.UserRoles?.Select(ur => ur.Role.Name).ToList() ?? new List<string>();
             var claims = new List<Claim>
             {
                 new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
                 new Claim(ClaimTypes.Name, user.Username),
                 new Claim(ClaimTypes.Email, user.Email),
-                new Claim(ClaimTypes.Role, user.Role)
             };
+            
+            foreach (var role in roles)
+            {
+                claims.Add(new Claim(ClaimTypes.Role, role));
+            }
 
             var creds = new SigningCredentials(_key, SecurityAlgorithms.HmacSha512Signature);
 
             var tokenDescriptor = new SecurityTokenDescriptor
             {
                 Subject = new ClaimsIdentity(claims),
-                Expires = DateTime.UtcNow.AddMinutes(15), // Short-lived access token
+                Expires = DateTime.UtcNow.AddMinutes(15),
                 SigningCredentials = creds,
                 Issuer = _config["Jwt:Issuer"] ?? "SchoolHubAPI",
                 Audience = _config["Jwt:Audience"] ?? "SchoolHubClient"
@@ -62,7 +68,7 @@ namespace SchoolHub.API.Services
             return new RefreshToken
             {
                 Token = Convert.ToBase64String(randomNumber),
-                Expires = DateTime.UtcNow.AddDays(7), // 7 days refresh token
+                Expires = DateTime.UtcNow.AddDays(7),
                 UserId = userId,
                 Created = DateTime.UtcNow
             };

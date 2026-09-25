@@ -3,8 +3,10 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SchoolHub.API.Data;
 using SchoolHub.API.DTOs;
-using SchoolHub.API.Models;
+using SchoolHub.API.Models.Auth;
+using SchoolHub.API.Models.People;
 using SchoolHub.API.Services;
+using BCrypt.Net;
 
 namespace SchoolHub.API.Controllers
 {
@@ -12,10 +14,10 @@ namespace SchoolHub.API.Controllers
     [ApiController]
     public class AuthController : ControllerBase
     {
-        private readonly SchoolHubDbContext _context;
+        private readonly ApplicationDbContext _context;
         private readonly ITokenService _tokenService;
 
-        public AuthController(SchoolHubDbContext context, ITokenService tokenService)
+        public AuthController(ApplicationDbContext context, ITokenService tokenService)
         {
             _context = context;
             _tokenService = tokenService;
@@ -26,6 +28,8 @@ namespace SchoolHub.API.Controllers
         {
             var user = await _context.Users
                 .Include(u => u.RefreshTokens)
+                .Include(u => u.UserRoles)
+                .ThenInclude(ur => ur.Role)
                 .FirstOrDefaultAsync(u => u.Username == request.Username);
 
             if (user == null || !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
@@ -39,12 +43,14 @@ namespace SchoolHub.API.Controllers
             user.RefreshTokens.Add(refreshToken);
             await _context.SaveChangesAsync();
 
+            var role = user.UserRoles.FirstOrDefault()?.Role.Name ?? "Student";
+
             return Ok(new AuthResponse
             {
                 AccessToken = accessToken,
                 RefreshToken = refreshToken.Token,
                 Username = user.Username,
-                Role = user.Role,
+                Role = role,
                 UserId = user.Id
             });
         }
@@ -62,23 +68,41 @@ namespace SchoolHub.API.Controllers
                 Username = request.Username,
                 Email = request.Email,
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
-                Role = request.Role
+                IsActive = true
             };
 
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
 
+            var role = await _context.Roles.FirstOrDefaultAsync(r => r.Name == request.Role);
+            if (role == null)
+            {
+                role = await _context.Roles.FirstOrDefaultAsync(r => r.Name == "Student");
+            }
+
+            _context.UserRoles.Add(new UserRole { UserId = user.Id, RoleId = role.Id });
+            await _context.SaveChangesAsync();
+
             if (request.Role == "Teacher")
             {
-                _context.TeacherProfiles.Add(new TeacherProfile { UserId = user.Id, Department = request.Department });
+                _context.Teachers.Add(new Teacher
+                {
+                    UserId = user.Id,
+                    DepartmentId = request.DepartmentId,
+                    EmployeeCode = request.EmployeeCode ?? string.Empty
+                });
             }
             else if (request.Role == "Student")
             {
-                _context.StudentProfiles.Add(new StudentProfile { UserId = user.Id, ClassRoomId = request.ClassRoomId ?? 1, RollNumber = request.RollNumber });
+                _context.Students.Add(new Student
+                {
+                    UserId = user.Id,
+                    RollNumber = request.RollNumber ?? string.Empty
+                });
             }
             else if (request.Role == "Parent")
             {
-                _context.ParentProfiles.Add(new ParentProfile { UserId = user.Id });
+                _context.Parents.Add(new Parent { UserId = user.Id });
             }
 
             await _context.SaveChangesAsync();
@@ -94,7 +118,7 @@ namespace SchoolHub.API.Controllers
                 AccessToken = accessToken,
                 RefreshToken = refreshToken.Token,
                 Username = user.Username,
-                Role = user.Role,
+                Role = role.Name,
                 UserId = user.Id
             });
         }
@@ -104,6 +128,8 @@ namespace SchoolHub.API.Controllers
         {
             var refreshToken = await _context.RefreshTokens
                 .Include(rt => rt.User)
+                .ThenInclude(u => u.UserRoles)
+                .ThenInclude(ur => ur.Role)
                 .FirstOrDefaultAsync(rt => rt.Token == request.RefreshToken);
 
             if (refreshToken == null || refreshToken.IsRevoked || refreshToken.IsExpired)
@@ -119,12 +145,14 @@ namespace SchoolHub.API.Controllers
             user.RefreshTokens.Add(newRefreshToken);
             await _context.SaveChangesAsync();
 
+            var role = user.UserRoles.FirstOrDefault()?.Role.Name ?? "Student";
+
             return Ok(new AuthResponse
             {
                 AccessToken = newAccessToken,
                 RefreshToken = newRefreshToken.Token,
                 Username = user.Username,
-                Role = user.Role,
+                Role = role,
                 UserId = user.Id
             });
         }

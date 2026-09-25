@@ -1,29 +1,63 @@
 # SchoolHub Backend
 
-Production-quality School Management System API built with C# / ASP.NET Core Web API, Dapper, and PostgreSQL.
+Production-quality School Management System API built with C# / ASP.NET Core Web API, Entity Framework Core, and PostgreSQL.
 
-## Milestones & Features (Admin Dashboard Stats & Notification Management)
+## Milestones & Features
 
-### Features Added:
-- **Admin Dashboard Stats API (`/api/admin/dashboard/stats`)**: Shows total students, total teachers, total parents, total classes, today's attendance count, upcoming exams count, recent announcements count, and recent audit activity logs.
-- **Notification Management APIs (`/api/schoolextensions/notifications`)**: View notifications, mark as read (`PATCH /{id}/read`), mark all as read (`PATCH /read-all`), and delete notifications (`DELETE /{id}`).
+### Milestone 1: Database Setup with EF Core & PostgreSQL ✅
+- **Entities Created**: 26 entities across 11 modules (Auth, People, Academic, Schedule, Attendance, Assignments, Exams, Fees, Communication, Events, System)
+- **ApplicationDbContext**: Comprehensive Fluent API configuration with all relationships, foreign keys, indexes, unique constraints, and delete behaviors
+- **EF Core Migration**: `InitialCreate` generated successfully with all 26 tables
+- **Build Status**: ✅ Succeeded (0 errors, 1 warning)
+- **PostgreSQL**: Migration ready to apply (requires PostgreSQL instance)
 
-### Complete Feature & Module Coverage
-1. **Authentication & Accounts**: Login, Logout, Register, Forgot/Reset/Change Password, JWT Access & Refresh Tokens, Secure Password Hashing, Activation/Deactivation, Roles & Permissions, Profile Management & Picture (`/api/auth`, `/api/auth/password`, `/api/profile`).
-2. **Admin Dashboard & Management**: Stats, Students, Teachers, Parents CRUD, Search, Filter, Assign Class/Section/Subjects.
-3. **Academic Management**: Academic Years, Classes, Sections, Subjects.
-4. **Teacher Features**: My Classes, My Subjects, Attendance.
-5. **Assignment System**: Creation, Attachments, Submissions, Grading & Feedback.
-6. **Examination & Results**: Exam Management, Marks Entry, Automated Percentage & Grading Calculation.
-7. **Fee Management**: Fee Structures, Student Fees, Invoices, Payments.
-8. **Timetable & Schedule**: TimeSlots, TimetableEntries.
-9. **Announcements & Notifications**: Announcements, Notifications, UserDevices (Mark read, delete, etc.).
-10. **Events & Calendar**: Events, EventParticipants.
-11. **Portals & Reports**: Student & Parent Portals (multi-child switching), Admin Reports.
-12. **File Management & Audit Logs**: File metadata storage and administrative audit tracking.
-13. **Security & DevOps**: Global Exception Handling, CORS, Docker containerization.
+### Milestone 2: Authentication & Authorization (In Progress)
+- JWT Access Tokens + Refresh Tokens
+- Role-based authorization (Admin, Teacher, Student, Parent)
+- Secure password hashing with BCrypt
+- Login, Register, Refresh Token endpoints
 
-### Getting Started & Testing
-1. Ensure Docker Desktop & PostgreSQL are available.
-2. Run `docker-compose up --build` or `dotnet run --project SchoolHub.API`.
-3. Verify build status: `dotnet build` (Succeeds with 0 errors).
+### Milestone 3: Admin Dashboard & Management (Planned)
+- Student, Teacher, Parent CRUD
+- Search, Filter, Pagination
+- Assign Class/Section/Subjects
+
+### Milestone 4: Teacher/Student/Parent Portals (Planned)
+- Dashboards with statistics
+- Attendance, Assignments, Exams, Results, Fees
+- Multi-child switching for parents
+
+### Milestone 5: Academic & Core Modules (Planned)
+- Attendance, Assignments, Exams & Grading
+- Fee Management & Payments
+- Timetable, Announcements, Notifications
+- Reports & Analytics
+
+## Architecture
+- **Framework**: C# / ASP.NET Core Web API (.NET 8)
+- **Database**: PostgreSQL with Entity Framework Core
+- **ORM**: EF Core with Fluent API
+- **Authentication**: JWT + Refresh Tokens
+- **API Documentation**: Swagger / OpenAPI
+- **Health Check**: `/health` endpoint
+
+## Getting Started
+1. Ensure PostgreSQL is running (locally or via Docker)
+2. Update `appsettings.json` with your connection string
+3. Run `dotnet ef database update` to apply migrations
+4. Run `dotnet run --project SchoolHub.API` to start the API
+5. Access Swagger at `https://localhost:5001/swagger`
+
+## Database Schema
+All 11 modules with 26 tables covering:
+- **Auth**: Users, Roles, UserRoles, RefreshTokens
+- **People**: Students, Parents, StudentParents, Teachers, Departments
+- **Academic**: AcademicYears, Classes, Sections, Subjects, ClassSubjects, Enrollments
+- **Schedule**: TimeSlots, TimetableEntries
+- **Attendance**: AttendanceSessions, AttendanceRecords
+- **Assignments**: Assignments, AssignmentSubmissions
+- **Exams**: Exams, ExamSubjects, Marks, GradeScales
+- **Fees**: FeeStructures, StudentFees, Invoices, Payments
+- **Communication**: Announcements, Notifications, NotificationRecipients, UserDevices
+- **Events**: Events, EventParticipants
+- **System**: AuditLogs

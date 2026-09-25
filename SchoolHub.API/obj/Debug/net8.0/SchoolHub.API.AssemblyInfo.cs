@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("SchoolHub.API")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+11370abe5c8685a4298a7a6540f461a22681413f")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+c96b0652066246c533ffd5f8fd4262e7a02d62e1")]
 [assembly: System.Reflection.AssemblyProductAttribute("SchoolHub.API")]
 [assembly: System.Reflection.AssemblyTitleAttribute("SchoolHub.API")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

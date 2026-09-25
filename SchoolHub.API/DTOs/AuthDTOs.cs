@@ -19,10 +19,12 @@ namespace SchoolHub.API.DTOs
         [Required]
         public string Password { get; set; } = string.Empty;
         [Required]
-        public string Role { get; set; } = "Student"; // Admin, Teacher, Student, Parent
+        public string Role { get; set; } = "Student";
         public string Department { get; set; } = string.Empty;
+        public int? DepartmentId { get; set; }
         public int? ClassRoomId { get; set; }
         public string RollNumber { get; set; } = string.Empty;
+        public string EmployeeCode { get; set; } = string.Empty;
     }
 
     public class RefreshTokenRequest
