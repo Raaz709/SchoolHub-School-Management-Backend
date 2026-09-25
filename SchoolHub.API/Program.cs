@@ -1,3 +1,4 @@
+using DotNetEnv;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -5,6 +6,8 @@ using SchoolHub.API.Data;
 using SchoolHub.API.Middleware;
 using SchoolHub.API.Services;
 using System.Text;
+
+Env.Load();
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -14,11 +17,13 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 // PostgreSQL with EF Core
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
-    ?? "Host=localhost;Database=schoolhub_db;Username=postgres;Password=postgres";
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(connectionString));
+
+// Register Dapper DbInitializer
+builder.Services.AddScoped<DbInitializer>();
 
 // JWT Authentication Service & Bearer Setup
 builder.Services.AddScoped<ITokenService, TokenService>();
@@ -57,6 +62,13 @@ builder.Services.AddCors(options =>
 builder.Services.AddHealthChecks();
 
 var app = builder.Build();
+
+// Initialize Database Schema with Dapper
+using (var scope = app.Services.CreateScope())
+{
+    var dbInitializer = scope.ServiceProvider.GetRequiredService<DbInitializer>();
+    await dbInitializer.InitializeAsync();
+}
 
 // Global Exception Handling Middleware
 app.UseMiddleware<ExceptionMiddleware>();

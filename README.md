@@ -1,6 +1,6 @@
 # SchoolHub Backend
 
-Production-quality School Management System API built with C# / ASP.NET Core Web API, Entity Framework Core, and PostgreSQL.
+Production-quality School Management System API built with C# / ASP.NET Core Web API, Entity Framework Core, Dapper, and PostgreSQL.
 
 ## Milestones & Features
 
@@ -9,7 +9,6 @@ Production-quality School Management System API built with C# / ASP.NET Core Web
 - **ApplicationDbContext**: Comprehensive Fluent API configuration with all relationships, foreign keys, indexes, unique constraints, and delete behaviors
 - **EF Core Migration**: `InitialCreate` generated successfully with all 26 tables
 - **Build Status**: ✅ Succeeded (0 errors, 1 warning)
-- **PostgreSQL**: Migration ready to apply (requires PostgreSQL instance)
 
 ### Milestone 2: Authentication & Authorization (In Progress)
 - JWT Access Tokens + Refresh Tokens
@@ -35,16 +34,32 @@ Production-quality School Management System API built with C# / ASP.NET Core Web
 
 ## Architecture
 - **Framework**: C# / ASP.NET Core Web API (.NET 8)
-- **Database**: PostgreSQL with Entity Framework Core
+- **Database**: PostgreSQL with Entity Framework Core + Dapper
 - **ORM**: EF Core with Fluent API
 - **Authentication**: JWT + Refresh Tokens
 - **API Documentation**: Swagger / OpenAPI
 - **Health Check**: `/health` endpoint
 
+## Configuration
+All sensitive configuration is stored in `.env` file (not committed to git):
+
+```bash
+# Database Configuration
+ConnectionStrings__DefaultConnection=Host=localhost;Port=5432;Database=school_management;Username=postgres;Password=00000
+
+# JWT Configuration
+Jwt__Key=super_secret_key_for_schoolhub_jwt_security_token_2026!
+Jwt__Issuer=SchoolHubAPI
+Jwt__Audience=SchoolHubClient
+
+# App Settings
+ASPNETCORE_ENVIRONMENT=Development
+```
+
 ## Getting Started
 1. Ensure PostgreSQL is running (locally or via Docker)
-2. Update `appsettings.json` with your connection string
-3. Run `dotnet ef database update` to apply migrations
+2. Copy `.env.example` to `.env` and update with your credentials
+3. Run `dotnet ef database update` to apply EF Core migrations
 4. Run `dotnet run --project SchoolHub.API` to start the API
 5. Access Swagger at `https://localhost:5001/swagger`
 
@@ -61,3 +76,9 @@ All 11 modules with 26 tables covering:
 - **Communication**: Announcements, Notifications, NotificationRecipients, UserDevices
 - **Events**: Events, EventParticipants
 - **System**: AuditLogs
+
+## Dapper Integration
+The application uses **Dapper** for:
+- Database schema initialization on startup (DbInitializer)
+- High-performance queries where needed
+- EF Core is used for migrations and ORM operations
