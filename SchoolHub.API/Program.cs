@@ -14,7 +14,7 @@ builder.Services.AddSwaggerGen();
 
 // PostgreSQL Connection String
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") 
-    ?? "Host=localhost;Database=schoolhub_db;Username=postgres;Password=postgres";
+    ?? "Host=localhost;Database=schoolhub_db;Username=postgres;Password=00000";
 
 // Register Dapper DbInitializer
 builder.Services.AddSingleton<DbInitializer>(new DbInitializer(connectionString));
@@ -22,7 +22,7 @@ builder.Services.AddSingleton<DbInitializer>(new DbInitializer(connectionString)
 // JWT Authentication Service & Bearer Setup
 builder.Services.AddScoped<ITokenService, TokenService>();
 
-var jwtKey = builder.Configuration["Jwt:Key"] ?? "super_secret_key_for_schoolhub_jwt_security_token_2026!";
+var jwtKey = builder.Configuration["Jwt:Key"] ?? "super_secret_key_for_schoolhub_jwt_security_token_2026_make_it_longer_123456!";
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {

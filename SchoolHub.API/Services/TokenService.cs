@@ -23,7 +23,7 @@ namespace SchoolHub.API.Services
         public TokenService(IConfiguration config)
         {
             _config = config;
-            var tokenKey = _config["Jwt:Key"] ?? "super_secret_key_for_schoolhub_jwt_security_token_2026!";
+            var tokenKey = _config["Jwt:Key"] ?? "super_secret_key_for_schoolhub_jwt_security_token_2026_make_it_longer_123456!";
             _key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(tokenKey));
         }
 
@@ -34,7 +34,7 @@ namespace SchoolHub.API.Services
                 new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
                 new Claim(ClaimTypes.Name, user.Username),
                 new Claim(ClaimTypes.Email, user.Email),
-                new Claim(ClaimTypes.Role, "User") // Role will be added via claims from DB
+                new Claim(ClaimTypes.Role, user.Role ?? "User")
             };
 
             var creds = new SigningCredentials(_key, SecurityAlgorithms.HmacSha512Signature);
