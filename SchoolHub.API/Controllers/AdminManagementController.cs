@@ -133,10 +133,9 @@ namespace SchoolHub.API.Controllers
                 transaction.Commit();
                 return Ok(new { Message = "Parent created successfully", ParentId = parentId });
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                transaction.Rollback();
-                return StatusCode(500, new { Error = ex.Message });
+                throw;
             }
         }
 

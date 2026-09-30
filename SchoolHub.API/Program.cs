@@ -32,7 +32,10 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
     ?? "Host=localhost;Database=schoolhub_db;Username=postgres;Password=00000";
 
 // Register Dapper DbInitializer
-builder.Services.AddSingleton<DbInitializer>(new DbInitializer(connectionString));
+builder.Services.AddSingleton(sp => new DbInitializer(
+    connectionString,
+    sp.GetRequiredService<IConfiguration>(),
+    sp.GetRequiredService<ILogger<DbInitializer>>()));
 
 // JWT Authentication Service & Bearer Setup
 builder.Services.AddScoped<ITokenService, TokenService>();
@@ -89,7 +92,12 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
+// The integration tests drive the API in-memory over plain HTTP. Redirecting to
+// an unconfigured HTTPS port would turn every test request into a failed 307.
+if (!app.Environment.IsEnvironment("Testing"))
+{
+    app.UseHttpsRedirection();
+}
 
 app.UseCors("CorsPolicy");
 
@@ -100,3 +108,10 @@ app.MapControllers();
 app.MapHealthChecks("/health");
 
 app.Run();
+
+/// <summary>
+/// Exposed so the integration tests can spin the real pipeline up through
+/// <c>WebApplicationFactory&lt;Program&gt;</c>. Top-level statements otherwise
+/// generate an internal Program class that the factory cannot reference.
+/// </summary>
+public partial class Program { }

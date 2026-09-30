@@ -158,10 +158,9 @@ namespace SchoolHub.API.Controllers
                 transaction.Commit();
                 return Ok(new { Message = "Notification sent successfully", Id = notificationId, RecipientCount = recipients.Count });
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                transaction.Rollback();
-                return StatusCode(500, new { Error = ex.Message });
+                throw;
             }
         }
 
@@ -220,10 +219,9 @@ namespace SchoolHub.API.Controllers
                 transaction.Commit();
                 return Ok(new { Message = "Notification deleted" });
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                transaction.Rollback();
-                return StatusCode(500, new { Error = ex.Message });
+                throw;
             }
         }
     }

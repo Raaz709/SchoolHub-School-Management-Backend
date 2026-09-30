@@ -21,7 +21,12 @@ namespace SchoolHub.API.Controllers
 
         private IDbConnection Connection => new NpgsqlConnection(_connectionString);
 
+        /// <summary>
+        /// Fee collection is an Admin screen. Learners see their own balance via
+        /// the scoped /api/students/{id}/fees route instead.
+        /// </summary>
         [HttpGet("structures")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> GetFeeStructures()
         {
             using var db = Connection;

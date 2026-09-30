@@ -2,6 +2,7 @@ using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Npgsql;
+using SchoolHub.API.Security;
 using System.Data;
 using System.Security.Claims;
 
@@ -73,10 +74,9 @@ namespace SchoolHub.API.Controllers
                 transaction.Commit();
                 return Ok(new { Message = "Attendance marked successfully", SessionId = sessionId });
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                transaction.Rollback();
-                return StatusCode(500, new { Error = ex.Message });
+                throw;
             }
         }
 
@@ -84,6 +84,9 @@ namespace SchoolHub.API.Controllers
         public async Task<IActionResult> GetStudentAttendance(int studentId)
         {
             using var db = Connection;
+            // Previously any authenticated user could read any student's attendance
+            // by changing the id in the URL.
+            if (!await StudentAccess.CanReadStudentAsync(db, User, studentId)) return Forbid();
             var sql = @"
                 SELECT ar.Id, ar.Status, ar.Remarks, s.Date, s.ClassId
                 FROM AttendanceRecords ar

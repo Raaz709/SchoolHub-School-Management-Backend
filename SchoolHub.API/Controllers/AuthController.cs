@@ -191,13 +191,12 @@ namespace SchoolHub.API.Controllers
                     UserId = user.Id
                 });
             }
-            catch (Exception ex)
+            catch (Exception) when (db.State == ConnectionState.Open)
             {
-                if (db.State == ConnectionState.Open)
-                {
-                    transaction.Rollback();
-                }
-                return StatusCode(500, new { Error = ex.Message });
+                transaction.Rollback();
+                // Let ExceptionMiddleware classify this: a duplicate email comes
+                // back as 409 rather than a blanket 500.
+                throw;
             }
         }
 

@@ -22,7 +22,9 @@ namespace SchoolHub.API.Controllers
 
         private IDbConnection Connection => new NpgsqlConnection(_connectionString);
 
+        /// <summary>Students see the assignment list; creating and grading stay with staff.</summary>
         [HttpGet]
+        [Authorize(Roles = "Admin,Teacher,Student")]
         public async Task<IActionResult> GetAssignments()
         {
             using var db = Connection;

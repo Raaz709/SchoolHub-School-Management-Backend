@@ -21,7 +21,12 @@ namespace SchoolHub.API.Controllers
 
         private IDbConnection Connection => new NpgsqlConnection(_connectionString);
 
+        /// <summary>
+        /// Staff roster. Excluded from Student and Parent: the management UI is
+        /// Admin-only, and a Teacher only needs the roster via Student Info.
+        /// </summary>
         [HttpGet]
+        [Authorize(Roles = "Admin,Teacher")]
         public async Task<IActionResult> GetAllTeachers()
         {
             using var db = Connection;
@@ -66,10 +71,9 @@ namespace SchoolHub.API.Controllers
                 transaction.Commit();
                 return Ok(new { Message = "Teacher created successfully", TeacherId = teacherId, UserId = userId });
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                transaction.Rollback();
-                return StatusCode(500, new { Error = ex.Message });
+                throw;
             }
         }
     }

@@ -21,7 +21,9 @@ namespace SchoolHub.API.Controllers
 
         private IDbConnection Connection => new NpgsqlConnection(_connectionString);
 
+        /// <summary>Academic setup data, used by the staff-facing screens.</summary>
         [HttpGet("classes")]
+        [Authorize(Roles = "Admin,Teacher")]
         public async Task<IActionResult> GetClasses()
         {
             using var db = Connection;
@@ -40,6 +42,7 @@ namespace SchoolHub.API.Controllers
         }
 
         [HttpGet("sections")]
+        [Authorize(Roles = "Admin,Teacher")]
         public async Task<IActionResult> GetSections()
         {
             using var db = Connection;
@@ -61,6 +64,7 @@ namespace SchoolHub.API.Controllers
         }
 
         [HttpGet("subjects")]
+        [Authorize(Roles = "Admin,Teacher")]
         public async Task<IActionResult> GetSubjects()
         {
             using var db = Connection;

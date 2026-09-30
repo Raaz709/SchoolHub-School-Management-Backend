@@ -2,6 +2,7 @@ using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Npgsql;
+using SchoolHub.API.Security;
 using System.Data;
 using System.Security.Claims;
 
@@ -22,7 +23,12 @@ namespace SchoolHub.API.Controllers
 
         private IDbConnection Connection => new NpgsqlConnection(_connectionString);
 
+        /// <summary>
+        /// The full roster is staff-only. Learners reach their own data through
+        /// their dashboard or the scoped /{id}/* routes.
+        /// </summary>
         [HttpGet]
+        [Authorize(Roles = "Admin,Teacher")]
         public async Task<IActionResult> GetAllStudents()
         {
             using var db = Connection;
@@ -39,6 +45,7 @@ namespace SchoolHub.API.Controllers
         }
 
         [HttpGet("search")]
+        [Authorize(Roles = "Admin,Teacher")]
         public async Task<IActionResult> SearchAndFilterStudents([FromQuery] string? query, [FromQuery] int? classId, [FromQuery] int? sectionId)
         {
             using var db = Connection;
@@ -57,10 +64,19 @@ namespace SchoolHub.API.Controllers
             return Ok(students);
         }
 
+        /// <summary>
+        /// A single student record. Unlike the roster above, this is reachable by
+        /// every role because a Student needs their own row and a Parent needs
+        /// their children; ownership is enforced by StudentAccess rather than by
+        /// the role attribute, which would have rejected them before the check
+        /// could run.
+        /// </summary>
         [HttpGet("{id}")]
+        [Authorize(Roles = "Admin,Teacher,Student,Parent")]
         public async Task<IActionResult> GetStudentById(int id)
         {
             using var db = Connection;
+            if (!await StudentAccess.CanReadStudentAsync(db, User, id)) return Forbid();
             var sql = @"
                 SELECT s.Id, s.RollNumber, s.AdmissionDate, u.Id as UserId, u.Username, u.Email, u.IsActive
                 FROM Students s
@@ -114,10 +130,9 @@ namespace SchoolHub.API.Controllers
                 transaction.Commit();
                 return Ok(new { Message = "Student created successfully", StudentId = studentId, UserId = userId });
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                transaction.Rollback();
-                return StatusCode(500, new { Error = ex.Message });
+                throw;
             }
         }
 
@@ -166,6 +181,7 @@ namespace SchoolHub.API.Controllers
         public async Task<IActionResult> GetStudentAttendance(int id)
         {
             using var db = Connection;
+            if (!await StudentAccess.CanReadStudentAsync(db, User, id)) return Forbid();
             var sql = @"
                 SELECT ar.Id, ar.Status, ar.Remarks, s.Date, c.Name as ClassName
                 FROM AttendanceRecords ar
@@ -179,6 +195,7 @@ namespace SchoolHub.API.Controllers
         public async Task<IActionResult> GetStudentResults(int id)
         {
             using var db = Connection;
+            if (!await StudentAccess.CanReadStudentAsync(db, User, id)) return Forbid();
             var sql = @"
                 SELECT m.Id, m.MarksObtained, m.Grade, m.Remarks, es.MaxMarks, sub.Name as SubjectName, ex.Title as ExamTitle
                 FROM Marks m
@@ -193,6 +210,7 @@ namespace SchoolHub.API.Controllers
         public async Task<IActionResult> GetStudentFees(int id)
         {
             using var db = Connection;
+            if (!await StudentAccess.CanReadStudentAsync(db, User, id)) return Forbid();
             var sql = @"
                 SELECT sf.Id, sf.DueDate, sf.Status, fs.Name as FeeName, fs.Amount
                 FROM StudentFees sf
@@ -205,6 +223,7 @@ namespace SchoolHub.API.Controllers
         public async Task<IActionResult> GetStudentAssignments(int id)
         {
             using var db = Connection;
+            if (!await StudentAccess.CanReadStudentAsync(db, User, id)) return Forbid();
             var sql = @"
                 SELECT a.Id, a.Title, a.Description, a.DueDate, a.MaxScore, sub.Name as SubjectName,
                        subm.FilePath, subm.SubmittedAt, subm.Score, subm.Feedback

@@ -21,7 +21,9 @@ namespace SchoolHub.API.Controllers
 
         private IDbConnection Connection => new NpgsqlConnection(_connectionString);
 
+        /// <summary>Students may see the exam list; entering marks stays with staff.</summary>
         [HttpGet]
+        [Authorize(Roles = "Admin,Teacher,Student")]
         public async Task<IActionResult> GetExams()
         {
             using var db = Connection;
@@ -29,6 +31,10 @@ namespace SchoolHub.API.Controllers
             return Ok(exams);
         }
 
+        /// <summary>
+        /// Creating an exam had no role restriction at all, so any authenticated
+        /// user — including a Parent — could create one.
+        /// </summary>
         [HttpPost]
         [Authorize(Roles = "Admin,Teacher")]
         public async Task<IActionResult> CreateExam([FromBody] CreateExamDto dto)
@@ -77,10 +83,9 @@ namespace SchoolHub.API.Controllers
                 transaction.Commit();
                 return Ok(new { Message = "Marks entered and graded successfully", Grade = grade, Percentage = percentage });
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                transaction.Rollback();
-                return StatusCode(500, new { Error = ex.Message });
+                throw;
             }
         }
     }

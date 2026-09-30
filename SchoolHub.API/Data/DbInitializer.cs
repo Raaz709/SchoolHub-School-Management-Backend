@@ -1,5 +1,8 @@
 using Dapper;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Npgsql;
+using System;
 using System.Data;
 
 namespace SchoolHub.API.Data
@@ -7,10 +10,14 @@ namespace SchoolHub.API.Data
     public class DbInitializer
     {
         private readonly string _connectionString;
+        private readonly IConfiguration _configuration;
+        private readonly ILogger<DbInitializer> _logger;
 
-        public DbInitializer(string connectionString)
+        public DbInitializer(string connectionString, IConfiguration configuration, ILogger<DbInitializer> logger)
         {
             _connectionString = connectionString;
+            _configuration = configuration;
+            _logger = logger;
         }
 
         public async Task InitializeAsync()
@@ -356,6 +363,167 @@ namespace SchoolHub.API.Data
             ";
 
             await db.ExecuteAsync(schemaSql);
+
+            await EnsureBootstrapAdminAsync(db);
+        }
+
+        /// <summary>
+        /// Guarantees the system has exactly one usable administrator.
+        ///
+        /// Previously the only admin came from a seed script with a malformed
+        /// BCrypt hash, so the account existed but could never log in, and the
+        /// only way in was hand-made accounts with published passwords.
+        ///
+        /// The password is read from configuration (user-secrets or the
+        /// SCHOOLHUB_BOOTSTRAP_ADMIN_PASSWORD environment variable) and is never
+        /// committed. Without it the database is left untouched rather than
+        /// seeded with a well-known credential, and the warning explains what to
+        /// do instead.
+        /// </summary>
+        private async Task EnsureBootstrapAdminAsync(IDbConnection db)
+        {
+            var password = _configuration["BootstrapAdmin:Password"];
+
+            if (string.IsNullOrWhiteSpace(password))
+            {
+                // Only warn when there is genuinely no usable admin, so a
+                // correctly configured deployment stays quiet.
+                if (!await HasUsableAdminAsync(db))
+                {
+                    _logger.LogWarning(
+                        "No usable administrator account found. Set BootstrapAdmin:Password " +
+                        "(user-secrets) or the SCHOOLHUB_BOOTSTRAP_ADMIN_PASSWORD environment " +
+                        "variable and restart to create the 'admin' account.");
+                }
+                return;
+            }
+
+            if (password.Length < 12)
+            {
+                _logger.LogError(
+                    "BootstrapAdmin:Password must be at least 12 characters; skipping admin bootstrap.");
+                return;
+            }
+
+            var hash = BCrypt.Net.BCrypt.HashPassword(password);
+
+            var adminId = await db.ExecuteScalarAsync<int?>(
+                """
+                SELECT u.Id
+                FROM users u
+                JOIN userroles ur ON ur.UserId = u.Id
+                JOIN roles r ON r.Id = ur.RoleId
+                WHERE r.Name = 'Admin'
+                ORDER BY u.Id
+                LIMIT 1
+                """);
+
+            if (adminId is null)
+            {
+                var newId = await db.ExecuteScalarAsync<int?>(
+                    """
+                    INSERT INTO users (username, email, passwordhash, role, isactive)
+                    VALUES ('admin', 'admin@schoolhub.local', @hash, 'Admin', TRUE)
+                    ON CONFLICT (username) DO NOTHING
+                    RETURNING id
+                    """,
+                    new { hash });
+
+                if (newId is null)
+                {
+                    _logger.LogWarning("A user named 'admin' exists without the Admin role; not modifying it.");
+                    return;
+                }
+
+                await GrantAdminRoleAsync(db, newId.Value);
+                _logger.LogInformation("Created bootstrap administrator 'admin'.");
+                return;
+            }
+
+            // An admin exists. Repair it only if the stored hash is unusable, so
+            // a deliberate password change is never silently undone on restart.
+            if (await IsHashUsableAsync(db, adminId.Value))
+            {
+                _logger.LogInformation("Administrator account is present and its password hash is valid.");
+                return;
+            }
+
+            var repaired = await db.ExecuteAsync(
+                "UPDATE users SET passwordhash = @hash, isactive = TRUE WHERE id = @id",
+                new { hash, id = adminId.Value });
+
+            if (repaired > 0)
+            {
+                _logger.LogInformation(
+                    "Repaired the administrator password hash, which was stored in an unusable format.");
+            }
+        }
+
+        private async Task<bool> HasUsableAdminAsync(IDbConnection db)
+        {
+            var hashes = await db.QueryAsync<string>(
+                """
+                SELECT u.passwordhash
+                FROM users u
+                JOIN userroles ur ON ur.UserId = u.Id
+                JOIN roles r ON r.Id = ur.RoleId
+                WHERE r.Name = 'Admin'
+                """);
+
+            foreach (var hash in hashes)
+            {
+                if (IsUsableHash(hash)) return true;
+            }
+            return false;
+        }
+
+        private async Task GrantAdminRoleAsync(IDbConnection db, int userId)
+        {
+            await db.ExecuteAsync(
+                """
+                INSERT INTO userroles (userid, roleid)
+                SELECT @userId, id FROM roles WHERE name = 'Admin'
+                ON CONFLICT DO NOTHING
+                """,
+                new { userId });
+        }
+
+        private async Task<bool> IsHashUsableAsync(IDbConnection db, int userId)
+        {
+            var hash = await db.ExecuteScalarAsync<string>(
+                "SELECT passwordhash FROM users WHERE id = @id", new { id = userId });
+            return IsUsableHash(hash);
+        }
+
+        /// <summary>
+        /// True when BCrypt can actually parse the stored hash. The old seed
+        /// stored a placeholder, so the account existed but every login failed.
+        ///
+        /// A real <c>Verify</c> is used rather than a shape check: it is what
+        /// the login path does, so this cannot disagree with it.
+        /// </summary>
+        private static bool IsUsableHash(string? hash)
+        {
+            if (string.IsNullOrWhiteSpace(hash)) return false;
+            try
+            {
+                // Returns false for a wrong password, but throws when the hash
+                // itself is malformed, which is the case being detected.
+                BCrypt.Net.BCrypt.Verify("probe", hash);
+                return true;
+            }
+            catch (ArgumentException)
+            {
+                return false;
+            }
+            catch (FormatException)
+            {
+                return false;
+            }
+            catch (BCrypt.Net.SaltParseException)
+            {
+                return false;
+            }
         }
     }
 }
