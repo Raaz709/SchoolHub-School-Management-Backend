@@ -1,0 +1,48 @@
+# Build output
+bin/
+obj/
+[Bb]in/
+[Oo]bj/
+*.user
+*.suo
+*.userosschemamap
+*.userprefs
+
+# Local secrets & machine-specific config
+.env
+.env.*
+!.env.example
+appsettings.Development.json
+appsettings.Local.json
+*.local.json
+secrets.json
+
+# Rider / Visual Studio
+.vs/
+.idea/
+*.sw?
+
+# Test & coverage output
+[Tt]est[Rr]esult*/
+*.coverage
+coverage*.json
+coverage*.xml
+
+# OS noise
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+logs/
+
+# NOTE: docker-compose.yml and *.http are intentionally NOT ignored.
+# They are shared project tooling and belong in the repository.
+# Only machine-local overrides should be excluded, e.g.:
+docker-compose.override.yml
+
+# Secrets must never be committed. Supply them via:
+#   dotnet user-secrets set "Jwt:Key" "..."
+#   dotnet user-secrets set "ConnectionStrings:DefaultConnection" "..."
+# or environment variables (Jwt__Key / ConnectionStrings__DefaultConnection).

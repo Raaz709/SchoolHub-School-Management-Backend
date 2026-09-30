@@ -53,7 +53,7 @@ namespace SchoolHub.API.Controllers
 
             // Unread Notifications
             var unreadNotifs = await db.ExecuteScalarAsync<int>(
-                "SELECT COUNT(*) FROM Notifications WHERE UserId = @UserId AND IsRead = FALSE", new { UserId = userId });
+                "SELECT COUNT(*) FROM NotificationRecipients WHERE UserId = @UserId AND IsRead = FALSE", new { UserId = userId });
 
             return Ok(new
             {

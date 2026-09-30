@@ -1,3 +1,0 @@
-﻿<Project>
-  <Import Project="..\build\SchoolHub.API.props" />
-</Project>
