@@ -47,7 +47,7 @@ namespace SchoolHub.API.Controllers
         {
             using var db = Connection;
             var sections = await db.QueryAsync(@"
-                SELECT s.Id, s.Name, c.Name as ClassName 
+                SELECT s.Id, s.Name, s.ClassId, c.Name as ClassName
                 FROM Sections s
                 JOIN Classes c ON s.ClassId = c.Id");
             return Ok(sections);

@@ -99,8 +99,8 @@ namespace SchoolHub.API.Controllers
             {
                 var passwordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password);
                 var userSql = @"
-                    INSERT INTO Users (Username, Email, PasswordHash, IsActive) 
-                    VALUES (@Username, @Email, @PasswordHash, TRUE) 
+                    INSERT INTO Users (Username, Email, PasswordHash, Role, IsActive) 
+                    VALUES (@Username, @Email, @PasswordHash, 'Student', TRUE) 
                     RETURNING Id;";
                 var userId = await db.ExecuteScalarAsync<int>(userSql, new { dto.Username, dto.Email, PasswordHash = passwordHash }, transaction);
 
@@ -140,9 +140,22 @@ namespace SchoolHub.API.Controllers
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> UpdateStudent(int id, [FromBody] UpdateStudentDto dto)
         {
+            var roll = (dto.RollNumber ?? string.Empty).Trim();
+            if (roll.Length == 0) return BadRequest(new { Message = "Roll number is required." });
+
             using var db = Connection;
-            var sql = "UPDATE Students SET RollNumber = @RollNumber WHERE Id = @Id";
-            await db.ExecuteAsync(sql, new { dto.RollNumber, Id = id });
+            db.Open();
+
+            // Without this the UPDATE matched nothing and still returned 200, so
+            // the UI reported success for a student that does not exist.
+            var exists = await db.ExecuteScalarAsync<int?>(
+                "SELECT Id FROM Students WHERE Id = @Id", new { Id = id });
+            if (!exists.HasValue) return NotFound();
+
+            await db.ExecuteAsync(
+                "UPDATE Students SET RollNumber = @RollNumber WHERE Id = @Id",
+                new { RollNumber = roll, Id = id });
+
             return Ok(new { Message = "Student updated successfully" });
         }
 
@@ -158,11 +171,41 @@ namespace SchoolHub.API.Controllers
             return Ok(new { Message = "Student deactivated successfully" });
         }
 
+        /// <summary>
+        /// Re-enables a deactivated account. Deactivation is otherwise a one-way
+        /// door: without this, a student removed by mistake can only be fixed by
+        /// editing the database directly.
+        /// </summary>
+        [HttpPatch("{id}/reactivate")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> ReactivateStudent(int id)
+        {
+            using var db = Connection;
+            var userId = await db.ExecuteScalarAsync<int?>("SELECT UserId FROM Students WHERE Id = @Id", new { Id = id });
+            if (!userId.HasValue) return NotFound();
+
+            await db.ExecuteAsync("UPDATE Users SET IsActive = TRUE WHERE Id = @UserId", new { UserId = userId.Value });
+            return Ok(new { Message = "Student reactivated successfully" });
+        }
+
         [HttpPost("{id}/assign-class")]
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> AssignStudentToClass(int id, [FromBody] AssignClassDto dto)
         {
             using var db = Connection;
+            db.Open();
+
+            // Same reason as UpdateStudent: assigning a class to a student that
+            // does not exist used to report success.
+            var exists = await db.ExecuteScalarAsync<int?>(
+                "SELECT Id FROM Students WHERE Id = @Id", new { Id = id });
+            if (!exists.HasValue) return NotFound();
+
+            if (dto.ClassId <= 0 || dto.SectionId <= 0)
+            {
+                return BadRequest(new { Message = "Both a class and a section are required." });
+            }
+
             var existing = await db.ExecuteScalarAsync<int?>("SELECT Id FROM Enrollments WHERE StudentId = @StudentId", new { StudentId = id });
             if (existing.HasValue)
             {
