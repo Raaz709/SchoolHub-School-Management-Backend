@@ -151,6 +151,19 @@ namespace SchoolHub.API.Data
                     EnrolledAt TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                 );
 
+                -- A student belongs to one class at a time. Without this the
+                -- class-assignment upsert (ON CONFLICT (StudentId)) has nothing
+                -- to conflict on, and a student accumulates a row per
+                -- assignment, which made the roster repeat every student.
+                -- Older databases may already hold duplicates, so collapse them
+                -- to the newest row before the index is created. Same fix as
+                -- migrations/003_enrollment_one_per_student.sql.
+                DELETE FROM Enrollments e
+                USING Enrollments newer
+                WHERE e.StudentId = newer.StudentId AND e.Id < newer.Id;
+                CREATE UNIQUE INDEX IF NOT EXISTS ux_enrollments_studentid
+                    ON Enrollments (StudentId);
+
                 -- ==========================================
                 -- SCHEDULE
                 -- ==========================================

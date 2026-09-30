@@ -32,15 +32,26 @@ namespace SchoolHub.API.Controllers
         public async Task<IActionResult> GetAllStudents()
         {
             using var db = Connection;
-            var sql = @"
+            // The lateral join picks a single enrolment instead of joining every
+            // one. A plain LEFT JOIN returned the student once per enrolment row,
+            // which rendered four students as eighteen. The unique index from
+            // migrations/003 keeps the data clean; this keeps the response
+            // correct even if it is not.
+            var students = await db.QueryAsync(@"
                 SELECT s.Id, s.RollNumber, s.AdmissionDate, u.Id as UserId, u.Username, u.Email, u.IsActive,
-                       c.Name as ClassName, sec.Name as SectionName
+                       c.Name as ClassName, sec.Name as SectionName,
+                       latest.ClassId as ClassId, latest.SectionId as SectionId
                 FROM Students s
                 JOIN Users u ON s.UserId = u.Id
-                LEFT JOIN Enrollments e ON s.Id = e.StudentId
-                LEFT JOIN Classes c ON e.ClassId = c.Id
-                LEFT JOIN Sections sec ON e.SectionId = sec.Id";
-            var students = await db.QueryAsync(sql);
+                LEFT JOIN LATERAL (
+                    SELECT e.ClassId, e.SectionId
+                    FROM Enrollments e
+                    WHERE e.StudentId = s.Id
+                    ORDER BY e.Id DESC
+                    LIMIT 1
+                ) latest ON TRUE
+                LEFT JOIN Classes c ON c.Id = latest.ClassId
+                LEFT JOIN Sections sec ON sec.Id = latest.SectionId");
             return Ok(students);
         }
 
@@ -49,17 +60,27 @@ namespace SchoolHub.API.Controllers
         public async Task<IActionResult> SearchAndFilterStudents([FromQuery] string? query, [FromQuery] int? classId, [FromQuery] int? sectionId)
         {
             using var db = Connection;
+            // Same single-enrolment lateral join as above. SELECT DISTINCT used
+            // to paper over the duplicate rows, but it silently chose one
+            // arbitrary ClassName/SectionName when a student had several.
             var sql = @"
-                SELECT DISTINCT s.Id, s.RollNumber, s.AdmissionDate, u.Id as UserId, u.Username, u.Email, u.IsActive,
-                       c.Name as ClassName, sec.Name as SectionName
+                SELECT s.Id, s.RollNumber, s.AdmissionDate, u.Id as UserId, u.Username, u.Email, u.IsActive,
+                       c.Name as ClassName, sec.Name as SectionName,
+                       latest.ClassId as ClassId, latest.SectionId as SectionId
                 FROM Students s
                 JOIN Users u ON s.UserId = u.Id
-                LEFT JOIN Enrollments e ON s.Id = e.StudentId
-                LEFT JOIN Classes c ON e.ClassId = c.Id
-                LEFT JOIN Sections sec ON e.SectionId = sec.Id
+                LEFT JOIN LATERAL (
+                    SELECT e.ClassId, e.SectionId
+                    FROM Enrollments e
+                    WHERE e.StudentId = s.Id
+                    ORDER BY e.Id DESC
+                    LIMIT 1
+                ) latest ON TRUE
+                LEFT JOIN Classes c ON c.Id = latest.ClassId
+                LEFT JOIN Sections sec ON sec.Id = latest.SectionId
                 WHERE (@Query IS NULL OR u.Username ILIKE '%' || @Query || '%' OR u.Email ILIKE '%' || @Query || '%' OR s.RollNumber ILIKE '%' || @Query || '%')
-                  AND (@ClassId IS NULL OR e.ClassId = @ClassId)
-                  AND (@SectionId IS NULL OR e.SectionId = @SectionId)";
+                  AND (@ClassId IS NULL OR latest.ClassId = @ClassId)
+                  AND (@SectionId IS NULL OR latest.SectionId = @SectionId)";
             var students = await db.QueryAsync(sql, new { Query = query, ClassId = classId, SectionId = sectionId });
             return Ok(students);
         }
@@ -77,10 +98,24 @@ namespace SchoolHub.API.Controllers
         {
             using var db = Connection;
             if (!await StudentAccess.CanReadStudentAsync(db, User, id)) return Forbid();
+            // Same projection as the roster, so opening one student returns the
+            // same shape the list does. It previously omitted ClassName and
+            // SectionName, so a detail view lost the student's class.
             var sql = @"
-                SELECT s.Id, s.RollNumber, s.AdmissionDate, u.Id as UserId, u.Username, u.Email, u.IsActive
+                SELECT s.Id, s.RollNumber, s.AdmissionDate, u.Id as UserId, u.Username, u.Email, u.IsActive,
+                       c.Name as ClassName, sec.Name as SectionName,
+                       latest.ClassId as ClassId, latest.SectionId as SectionId
                 FROM Students s
                 JOIN Users u ON s.UserId = u.Id
+                LEFT JOIN LATERAL (
+                    SELECT e.ClassId, e.SectionId
+                    FROM Enrollments e
+                    WHERE e.StudentId = s.Id
+                    ORDER BY e.Id DESC
+                    LIMIT 1
+                ) latest ON TRUE
+                LEFT JOIN Classes c ON c.Id = latest.ClassId
+                LEFT JOIN Sections sec ON sec.Id = latest.SectionId
                 WHERE s.Id = @Id";
             var student = await db.QueryFirstOrDefaultAsync(sql, new { Id = id });
             if (student == null) return NotFound();
@@ -206,17 +241,19 @@ namespace SchoolHub.API.Controllers
                 return BadRequest(new { Message = "Both a class and a section are required." });
             }
 
-            var existing = await db.ExecuteScalarAsync<int?>("SELECT Id FROM Enrollments WHERE StudentId = @StudentId", new { StudentId = id });
-            if (existing.HasValue)
-            {
-                await db.ExecuteAsync("UPDATE Enrollments SET ClassId = @ClassId, SectionId = @SectionId WHERE StudentId = @StudentId",
-                    new { dto.ClassId, dto.SectionId, StudentId = id });
-            }
-            else
-            {
-                await db.ExecuteAsync("INSERT INTO Enrollments (StudentId, ClassId, SectionId) VALUES (@StudentId, @ClassId, @SectionId)",
-                    new { StudentId = id, dto.ClassId, dto.SectionId });
-            }
+            // Atomic upsert. The previous SELECT-then-INSERT/UPDATE ran two
+            // round trips and could race, and the UPDATE variant rewrote every
+            // enrolment row for the student. ON CONFLICT relies on the unique
+            // index added in migrations/003_enrollment_one_per_student.sql.
+            await db.ExecuteAsync(
+                """
+                INSERT INTO Enrollments (StudentId, ClassId, SectionId)
+                VALUES (@StudentId, @ClassId, @SectionId)
+                ON CONFLICT (StudentId) DO UPDATE
+                    SET ClassId = @ClassId, SectionId = @SectionId
+                """,
+                new { StudentId = id, dto.ClassId, dto.SectionId });
+
             return Ok(new { Message = "Student assigned to class successfully" });
         }
 
