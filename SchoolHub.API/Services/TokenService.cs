@@ -42,7 +42,7 @@ namespace SchoolHub.API.Services
             var tokenDescriptor = new SecurityTokenDescriptor
             {
                 Subject = new ClaimsIdentity(claims),
-                Expires = DateTime.UtcNow.AddMinutes(15),
+                Expires = DateTime.UtcNow.AddDays(7),
                 SigningCredentials = creds,
                 Issuer = _config["Jwt:Issuer"] ?? "SchoolHubAPI",
                 Audience = _config["Jwt:Audience"] ?? "SchoolHubClient"

@@ -35,6 +35,7 @@ namespace SchoolHub.API.Data
                     Username VARCHAR(100) UNIQUE NOT NULL,
                     Email VARCHAR(255) UNIQUE NOT NULL,
                     PasswordHash VARCHAR(255) NOT NULL,
+                    Role VARCHAR(50) DEFAULT 'Student',
                     ProfilePictureUrl VARCHAR(500),
                     IsActive BOOLEAN DEFAULT TRUE,
                     CreatedAt TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
