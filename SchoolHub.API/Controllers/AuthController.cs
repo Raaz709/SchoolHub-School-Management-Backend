@@ -16,6 +16,38 @@ namespace SchoolHub.API.Controllers
         private readonly string _connectionString;
         private readonly ITokenService _tokenService;
 
+        /// <summary>
+        /// Roles a public registrant may claim. Admin and Teacher staff records
+        /// are provisioned by an administrator; allowing them here would let
+        /// anyone self-escalate, since the role is written straight to the user.
+        /// </summary>
+        private static readonly string[] SelfRegisterableRoles = { "Student", "Parent" };
+
+        /// <summary>
+        /// BCrypt.Verify throws when the stored hash cannot be parsed (the library
+        /// raises SaltParseException / ArgumentException depending on how the hash
+        /// is malformed), so a corrupted or placeholder hash must be treated as a
+        /// failed login rather than surfacing as a 500.
+        ///
+        /// Any failure here means "this password does not match", so all parse
+        /// errors collapse to false rather than being rethrown.
+        /// </summary>
+        private static bool VerifyPassword(string password, string? hash)
+        {
+            if (string.IsNullOrEmpty(hash)) return false;
+            try
+            {
+                return BCrypt.Net.BCrypt.Verify(password, hash);
+            }
+            catch (Exception ex) when (
+                ex is ArgumentException
+                or FormatException
+                or BCrypt.Net.SaltParseException)
+            {
+                return false;
+            }
+        }
+
         public AuthController(IConfiguration configuration, ITokenService tokenService)
         {
             _connectionString = configuration.GetConnectionString("DefaultConnection") 
@@ -32,7 +64,12 @@ namespace SchoolHub.API.Controllers
             var user = await db.QueryFirstOrDefaultAsync<User>(
                 "SELECT * FROM Users WHERE Username = @Username", new { request.Username });
 
-            if (user == null || !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
+            // BCrypt.Verify throws (rather than returning false) when the stored
+            // hash is not valid bcrypt, which turned a bad-password attempt into a
+            // 500. A malformed hash is simply a failed login.
+            var passwordMatches = user != null && VerifyPassword(request.Password, user.PasswordHash);
+
+            if (!passwordMatches)
             {
                 return Unauthorized("Invalid username or password.");
             }
@@ -69,34 +106,70 @@ namespace SchoolHub.API.Controllers
             db.Open();
             using var transaction = db.BeginTransaction();
 
+            // Validate before touching the database. The role used to be written
+            // straight from the request body, so anyone could POST Role=Admin and
+            // receive an admin token.
+            var requestedRole = (request.Role ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(request.Username))
+            {
+                return BadRequest("Username is required.");
+            }
+            if (string.IsNullOrWhiteSpace(request.Email))
+            {
+                return BadRequest("Email is required.");
+            }
+            if (string.IsNullOrWhiteSpace(request.Password) || request.Password.Length < 8)
+            {
+                return BadRequest("Password must be at least 8 characters.");
+            }
+            if (!SelfRegisterableRoles.Contains(requestedRole, StringComparer.OrdinalIgnoreCase))
+            {
+                return BadRequest(
+                    $"Role '{requestedRole}' cannot be self-registered. Allowed: {string.Join(", ", SelfRegisterableRoles)}. " +
+                    "Teacher and Admin accounts are created by an administrator.");
+            }
+
+            var role = requestedRole.ToLowerInvariant() switch
+            {
+                "student" => "Student",
+                "parent" => "Parent",
+                _ => requestedRole,
+            };
+
+            // students.rollnumber is uniquely indexed and the index treats NULLs as
+            // equal, so two students registering without one both collided and
+            // surfaced as a 500. Require it up front instead.
+            if (role == "Student" && string.IsNullOrWhiteSpace(request.RollNumber))
+            {
+                return BadRequest("Roll number is required for student registration.");
+            }
+
             try
             {
-                if (await db.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM Users WHERE Username = @Username", new { request.Username }, transaction) > 0)
+                if (await db.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM Users WHERE Username = @Username", new { Username = request.Username.Trim() }, transaction) > 0)
                 {
                     return BadRequest("Username is already taken.");
+                }
+
+                if (await db.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM Users WHERE lower(Email) = lower(@Email)", new { Email = request.Email.Trim() }, transaction) > 0)
+                {
+                    return BadRequest("Email is already registered.");
                 }
 
                 var passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
                 var userId = await db.ExecuteScalarAsync<int>(@"
                     INSERT INTO Users (Username, Email, PasswordHash, Role, IsActive) 
                     VALUES (@Username, @Email, @PasswordHash, @Role, TRUE) 
-                    RETURNING Id;", new { request.Username, request.Email, PasswordHash = passwordHash, Role = request.Role }, transaction);
+                    RETURNING Id;", new { Username = request.Username.Trim(), Email = request.Email.Trim(), PasswordHash = passwordHash, Role = role }, transaction);
 
-                if (request.Role == "Student")
+                if (role == "Student")
                 {
                     await db.ExecuteAsync(@"
                         INSERT INTO Students (UserId, RollNumber, AdmissionDate) 
                         VALUES (@UserId, @RollNumber, @AdmissionDate)",
-                        new { UserId = userId, request.RollNumber, AdmissionDate = request.AdmissionDate ?? DateTime.UtcNow }, transaction);
+                        new { UserId = userId, RollNumber = request.RollNumber!.Trim(), AdmissionDate = request.AdmissionDate ?? DateTime.UtcNow }, transaction);
                 }
-                else if (request.Role == "Teacher")
-                {
-                    await db.ExecuteAsync(@"
-                        INSERT INTO Teachers (UserId, DepartmentId, EmployeeCode, HireDate) 
-                        VALUES (@UserId, @DepartmentId, @EmployeeCode, @HireDate)",
-                        new { UserId = userId, request.DepartmentId, request.EmployeeCode, HireDate = request.HireDate ?? DateTime.UtcNow }, transaction);
-                }
-                else if (request.Role == "Parent")
+                else if (role == "Parent")
                 {
                     await db.ExecuteAsync(@"
                         INSERT INTO Parents (UserId, Occupation) 

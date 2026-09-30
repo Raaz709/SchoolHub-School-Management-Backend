@@ -85,7 +85,7 @@ namespace SchoolHub.API.Controllers
         {
             using var db = Connection;
             var sql = @"
-                ar.Id, ar.Status, ar.Remarks, s.Date, s.ClassId
+                SELECT ar.Id, ar.Status, ar.Remarks, s.Date, s.ClassId
                 FROM AttendanceRecords ar
                 JOIN AttendanceSessions s ON ar.SessionId = s.Id
                 WHERE ar.StudentId = @StudentId";

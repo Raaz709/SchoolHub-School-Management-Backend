@@ -45,9 +45,12 @@ namespace SchoolHub.API.Controllers
             try
             {
                 var passwordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password);
+                // Role must be written here as well as into UserRoles: the JWT is
+                // built from Users.Role (see TokenService), so leaving it at the
+                // column default produced a token with role "Student".
                 var userSql = @"
-                    INSERT INTO Users (Username, Email, PasswordHash, IsActive) 
-                    VALUES (@Username, @Email, @PasswordHash, TRUE) 
+                    INSERT INTO Users (Username, Email, PasswordHash, Role, IsActive) 
+                    VALUES (@Username, @Email, @PasswordHash, 'Teacher', TRUE) 
                     RETURNING Id;";
                 var userId = await db.ExecuteScalarAsync<int>(userSql, new { dto.Username, dto.Email, PasswordHash = passwordHash }, transaction);
 

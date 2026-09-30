@@ -22,13 +22,45 @@ namespace SchoolHub.API.Controllers
 
         private IDbConnection Connection => new NpgsqlConnection(_connectionString);
 
-        // --- TEACHER MANAGEMENT ---
+            // --- DEPARTMENTS ---
+            // Teachers reference Departments, but there was no way for a client to
+            // list them, so the teacher form had to take a raw numeric id.
+            [HttpGet("departments")]
+            public async Task<IActionResult> GetDepartments()
+            {
+                using var db = Connection;
+                var departments = await db.QueryAsync(
+                    "SELECT id, name FROM departments ORDER BY name");
+                return Ok(departments);
+            }
+
+            [HttpPost("departments")]
+            public async Task<IActionResult> CreateDepartment([FromBody] CreateDepartmentDto dto)
+            {
+                var name = (dto.Name ?? string.Empty).Trim();
+                if (name.Length == 0) return BadRequest("Department name is required.");
+
+                try
+                {
+                    using var db = Connection;
+                    var id = await db.ExecuteScalarAsync<int>(
+                        "INSERT INTO departments (name) VALUES (@Name) RETURNING id",
+                        new { Name = name });
+                    return Ok(new { Message = "Department created successfully", DepartmentId = id });
+                }
+                catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
+                {
+                    return Conflict("A department with that name already exists.");
+                }
+            }
+
+            // --- TEACHER MANAGEMENT ---
         [HttpGet("teachers")]
         public async Task<IActionResult> GetTeachers()
         {
             using var db = Connection;
             var sql = @"
-                SELECT t.Id, t.EmployeeCode, t.HireDate, d.Name as DepartmentName, u.Id as UserId, u.Username, u.Email, u.IsActive
+                  SELECT t.Id, t.EmployeeCode, t.HireDate, t.DepartmentId, d.Name as DepartmentName, u.Id as UserId, u.Username, u.Email, u.IsActive
                 FROM Teachers t
                 JOIN Users u ON t.UserId = u.Id
                 LEFT JOIN Departments d ON t.DepartmentId = d.Id";
@@ -86,8 +118,10 @@ namespace SchoolHub.API.Controllers
             try
             {
                 var passwordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password);
+                // See TeachersController.CreateTeacher: the JWT is built from
+                // Users.Role, so it must be set on insert, not only in UserRoles.
                 var userId = await db.ExecuteScalarAsync<int>(
-                    "INSERT INTO Users (Username, Email, PasswordHash) VALUES (@Username, @Email, @PasswordHash) RETURNING Id;",
+                    "INSERT INTO Users (Username, Email, PasswordHash, Role, IsActive) VALUES (@Username, @Email, @PasswordHash, 'Parent', TRUE) RETURNING Id;",
                     new { dto.Username, dto.Email, PasswordHash = passwordHash }, transaction);
 
                 await db.ExecuteAsync("INSERT INTO UserRoles (UserId, RoleId) SELECT @UserId, Id FROM Roles WHERE Name = 'Parent'", new { UserId = userId }, transaction);
@@ -142,7 +176,12 @@ namespace SchoolHub.API.Controllers
         }
     }
 
-    public class UpdateTeacherDto
+        public class CreateDepartmentDto
+        {
+            public string Name { get; set; } = string.Empty;
+        }
+
+        public class UpdateTeacherDto
     {
         public int DepartmentId { get; set; }
         public string EmployeeCode { get; set; } = string.Empty;

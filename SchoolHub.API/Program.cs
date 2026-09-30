@@ -2,13 +2,28 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using SchoolHub.API.Data;
 using SchoolHub.API.Middleware;
+using SchoolHub.API.Serialization;
 using SchoolHub.API.Services;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
-builder.Services.AddControllers();
+// The React client is written against PascalCase members (userId, createdAt).
+// ASP.NET Core defaults PropertyNamingPolicy to camelCase, which silently
+// renamed every response property. Disable it so C# property names are emitted
+// exactly as declared and the TS interfaces line up 1:1.
+//
+// DictionaryKeyPolicy covers the untyped Dapper rows, whose keys are raw
+// PostgreSQL column names; see SqlColumnNaming for the details.
+builder.Services.AddControllers().AddJsonOptions(options =>
+{
+    var json = options.JsonSerializerOptions;
+    json.PropertyNamingPolicy = null;
+    json.DictionaryKeyPolicy = new SqlColumnNamingPolicy();
+    // Keep accepting camelCase on the way in so existing clients are unaffected.
+    json.PropertyNameCaseInsensitive = true;
+});
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 

@@ -88,30 +88,94 @@ namespace SchoolHub.API.Controllers
         }
 
         // --- NOTIFICATIONS ---
+        // The schema is normalised: notifications(id, title, message, createdat)
+        // plus notificationrecipients(notificationid, userid, isread). These
+        // endpoints previously read/wrote a flat Notifications.UserId/IsRead
+        // that does not exist, so every one of them returned 500.
+        private int CurrentUserId()
+        {
+            var raw = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            return int.TryParse(raw, out var id) ? id : 0;
+        }
+
         [HttpGet("notifications")]
         public async Task<IActionResult> GetNotifications()
         {
             using var db = Connection;
-            var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            int.TryParse(userIdStr, out int userId);
-            return Ok(await db.QueryAsync("SELECT * FROM Notifications WHERE UserId = @UserId ORDER BY CreatedAt DESC", new { UserId = userId }));
+            var userId = CurrentUserId();
+            var rows = await db.QueryAsync(@"
+                SELECT n.id, n.title, n.message, n.createdat, nr.isread
+                FROM notifications n
+                JOIN notificationrecipients nr ON nr.notificationid = n.id
+                WHERE nr.userid = @UserId
+                ORDER BY n.createdat DESC",
+                new { UserId = userId });
+            return Ok(rows);
+        }
+
+        [HttpGet("notifications/unread-count")]
+        public async Task<IActionResult> GetUnreadNotificationCount()
+        {
+            using var db = Connection;
+            var count = await db.ExecuteScalarAsync<int>(@"
+                SELECT COUNT(*) FROM notificationrecipients
+                WHERE userid = @UserId AND isread = FALSE",
+                new { UserId = CurrentUserId() });
+            return Ok(new { UnreadCount = count });
         }
 
         [HttpPost("notifications")]
         [Authorize(Roles = "Admin,Teacher")]
         public async Task<IActionResult> CreateNotification([FromBody] CreateNotificationDto dto)
         {
+            var title = (dto.Title ?? string.Empty).Trim();
+            if (title.Length == 0) return BadRequest("Notification title is required.");
+
+            // Accept either the legacy single UserId or a recipient list.
+            var recipients = dto.UserIds is { Count: > 0 }
+                ? dto.UserIds.Where(id => id > 0).Distinct().ToList()
+                : new List<int>();
+            if (dto.UserId > 0 && !recipients.Contains(dto.UserId)) recipients.Add(dto.UserId);
+            if (recipients.Count == 0) return BadRequest("At least one recipient is required.");
+
             using var db = Connection;
-            var sql = "INSERT INTO Notifications (UserId, Title, Message) VALUES (@UserId, @Title, @Message) RETURNING Id;";
-            var id = await db.ExecuteScalarAsync<int>(sql, dto);
-            return Ok(new { Message = "Notification sent successfully", Id = id });
+            db.Open();
+            using var transaction = db.BeginTransaction();
+
+            try
+            {
+                var notificationId = await db.ExecuteScalarAsync<int>(
+                    "INSERT INTO notifications (title, message) VALUES (@Title, @Message) RETURNING id",
+                    new { Title = title, dto.Message }, transaction);
+
+                foreach (var userId in recipients)
+                {
+                    await db.ExecuteAsync(
+                        "INSERT INTO notificationrecipients (notificationid, userid, isread) VALUES (@NotificationId, @UserId, FALSE)",
+                        new { NotificationId = notificationId, UserId = userId }, transaction);
+                }
+
+                transaction.Commit();
+                return Ok(new { Message = "Notification sent successfully", Id = notificationId, RecipientCount = recipients.Count });
+            }
+            catch (Exception ex)
+            {
+                transaction.Rollback();
+                return StatusCode(500, new { Error = ex.Message });
+            }
         }
 
         [HttpPatch("notifications/{id}/read")]
         public async Task<IActionResult> MarkNotificationAsRead(int id)
         {
             using var db = Connection;
-            await db.ExecuteAsync("UPDATE Notifications SET IsRead = TRUE WHERE Id = @Id", new { Id = id });
+            // Scoped to the caller's recipient row so one user cannot mark
+            // another user's notification as read.
+            var affected = await db.ExecuteAsync(
+                "UPDATE notificationrecipients SET isread = TRUE WHERE notificationid = @Id AND userid = @UserId",
+                new { Id = id, UserId = CurrentUserId() });
+
+            if (affected == 0) return NotFound();
             return Ok(new { Message = "Notification marked as read" });
         }
 
@@ -119,18 +183,48 @@ namespace SchoolHub.API.Controllers
         public async Task<IActionResult> MarkAllNotificationsAsRead()
         {
             using var db = Connection;
-            var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            int.TryParse(userIdStr, out int userId);
-            await db.ExecuteAsync("UPDATE Notifications SET IsRead = TRUE WHERE UserId = @UserId", new { UserId = userId });
-            return Ok(new { Message = "All notifications marked as read" });
+            var affected = await db.ExecuteAsync(
+                "UPDATE notificationrecipients SET isread = TRUE WHERE userid = @UserId",
+                new { UserId = CurrentUserId() });
+            return Ok(new { Message = "All notifications marked as read", Updated = affected });
         }
 
         [HttpDelete("notifications/{id}")]
         public async Task<IActionResult> DeleteNotification(int id)
         {
             using var db = Connection;
-            await db.ExecuteAsync("DELETE FROM Notifications WHERE Id = @Id", new { Id = id });
-            return Ok(new { Message = "Notification deleted" });
+            db.Open();
+            using var transaction = db.BeginTransaction();
+
+            try
+            {
+                var userId = CurrentUserId();
+                var isAdmin = User.IsInRole("Admin");
+
+                // Recipients own their delete; admins may delete anything.
+                if (!isAdmin)
+                {
+                    var owns = await db.ExecuteScalarAsync<int>(
+                        "SELECT COUNT(*) FROM notificationrecipients WHERE notificationid = @Id AND userid = @UserId",
+                        new { Id = id, UserId = userId }, transaction);
+                    if (owns == 0) return NotFound();
+                }
+
+                await db.ExecuteAsync(
+                    "DELETE FROM notificationrecipients WHERE notificationid = @Id",
+                    new { Id = id }, transaction);
+                await db.ExecuteAsync(
+                    "DELETE FROM notifications WHERE id = @Id",
+                    new { Id = id }, transaction);
+
+                transaction.Commit();
+                return Ok(new { Message = "Notification deleted" });
+            }
+            catch (Exception ex)
+            {
+                transaction.Rollback();
+                return StatusCode(500, new { Error = ex.Message });
+            }
         }
     }
 
@@ -162,7 +256,12 @@ namespace SchoolHub.API.Controllers
 
     public class CreateNotificationDto
     {
+        /// <summary>Legacy single-recipient field; still honoured.</summary>
         public int UserId { get; set; }
+
+        /// <summary>Preferred: send the same notification to several users.</summary>
+        public List<int> UserIds { get; set; } = new();
+
         public string Title { get; set; } = string.Empty;
         public string Message { get; set; } = string.Empty;
     }
