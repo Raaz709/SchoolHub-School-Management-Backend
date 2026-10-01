@@ -67,6 +67,8 @@ public static class SqlColumnNaming
             ["subjectname"] = "SubjectName",
             ["targetrole"] = "TargetRole",
             ["teacherid"] = "TeacherId",
+            ["teachername"] = "TeacherName",
+            ["sectioncount"] = "SectionCount",
             ["totalamount"] = "TotalAmount",
             ["updatedat"] = "UpdatedAt",
             ["userid"] = "UserId",

@@ -124,11 +124,24 @@ namespace SchoolHub.API.Data
                     Name VARCHAR(100) NOT NULL
                 );
 
+                -- A class name identifies a grade to the user. Duplicate names
+                -- made name-based lookups ambiguous and forced the UI to match
+                -- by id everywhere. Existing databases need
+                -- migrations/004_merge_duplicate_classes.sql applied first;
+                -- this block then finds the data already clean and does nothing.
+                CREATE UNIQUE INDEX IF NOT EXISTS ux_classes_name
+                    ON Classes (lower(Name));
+
                 CREATE TABLE IF NOT EXISTS Sections (
                     Id SERIAL PRIMARY KEY,
                     Name VARCHAR(50) NOT NULL,
                     ClassId INT REFERENCES Classes(Id) ON DELETE CASCADE
                 );
+
+                -- Unique per class, not globally: A is a valid section name in
+                -- every grade.
+                CREATE UNIQUE INDEX IF NOT EXISTS ux_sections_class_name
+                    ON Sections (ClassId, lower(Name));
 
                 CREATE TABLE IF NOT EXISTS Subjects (
                     Id SERIAL PRIMARY KEY,

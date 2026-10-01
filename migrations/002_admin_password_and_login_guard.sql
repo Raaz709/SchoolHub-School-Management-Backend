@@ -1,0 +1,43 @@
+-- 002: fix login 500 on malformed password hash, and make the admin usable
+--
+-- Two related problems:
+--
+-- 1. AuthController.Login called BCrypt.Verify(request.Password, user.PasswordHash)
+--    without guarding it. A stored hash that is not valid bcrypt makes BCrypt
+--    throw, so the endpoint returned 500 instead of 401. The account has since
+--    been repaired (see below), but the guard stays as defence in depth: a
+--    corrupted row must never look like a server outage.
+--
+-- 2. The only admin came from a seed script whose passwordhash column held the
+--    literal placeholder  "\".  The account existed but could never log in, and
+--    the only practical way in was hand-made accounts with published passwords
+--    (dev_admin / DevAdmin@12345 and friends). Those have been removed.
+--
+-- No schema change is required by this file. The repair is performed by
+-- DbInitializer.EnsureBootstrapAdminAsync at startup.
+
+-- ------------------------------------------------------------------
+-- How the admin account is now provisioned
+-- ------------------------------------------------------------------
+-- The password is NEVER committed. Supply it out of band, then start the API:
+--
+--   dotnet user-secrets set "BootstrapAdmin:Password" "<at least 12 chars>"
+--   -- or --
+--   $env:SCHOOLHUB_BOOTSTRAP_ADMIN_PASSWORD = "<at least 12 chars>"
+--   dotnet run --project SchoolHub.API
+--
+-- On startup the initializer:
+--   * finds no admin            -> creates 'admin' with a real bcrypt hash
+--   * finds an admin whose hash
+--     BCrypt cannot parse        -> rewrites passwordhash and reactivates it
+--   * finds a working admin      -> does nothing
+--
+-- That last case is the important one: a password you changed yourself is
+-- never silently reverted on the next restart.
+--
+-- With no password configured and no usable admin, the API logs a warning and
+-- starts normally. It does not fall back to a well-known credential.
+--
+-- To verify the stored hash is parseable:
+--   SELECT username, left(passwordhash, 7), length(passwordhash) FROM users;
+--   -- expect: admin|$2a$11$|60
