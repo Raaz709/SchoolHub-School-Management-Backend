@@ -284,12 +284,22 @@ public class StudentManagementTests
         using var client = Admin;
         using var sectionsResponse = await client.GetAsync("/api/academic/sections");
         var sections = (await ReadJson(sectionsResponse)).EnumerateArray().ToList();
-        var classId = sections[0].GetProperty("ClassId").GetInt32();
+
+        // Pick a class that genuinely has two sections rather than assuming the
+        // first one does. Taking sections[0] made this depend on whatever rows
+        // another test class happened to leave behind, so it passed alone and
+        // failed in a full run.
         var sectionIds = sections
-            .Where(s => s.GetProperty("ClassId").GetInt32() == classId)
+            .GroupBy(s => s.GetProperty("ClassId").GetInt32())
+            .FirstOrDefault(g => g.Count() >= 2)?
             .Select(s => s.GetProperty("Id").GetInt32())
-            .ToList();
+            .ToList()
+            ?? new List<int>();
         Assert.True(sectionIds.Count >= 2, "fixture needs a class with two sections");
+        var classId = sections
+            .First(s => s.GetProperty("Id").GetInt32() == sectionIds[0])
+            .GetProperty("ClassId")
+            .GetInt32();
 
         using (var first = await client.PostAsJsonAsync(
             $"/api/students/{studentId}/assign-class",

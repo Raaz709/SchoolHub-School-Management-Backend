@@ -217,6 +217,49 @@ namespace SchoolHub.API.Data
                     Remarks TEXT
                 );
 
+                -- One session per section per day. Without this a teacher could
+                -- mark the same section twice and the history list showed both,
+                -- so a student's percentage counted some days twice and never
+                -- counted others. Older databases may already hold duplicates, so
+                -- collapse them to the newest session first, carrying each
+                -- duplicate's marks across to it where the student has no mark
+                -- there yet. Same fix as
+                -- migrations/005_one_attendance_session_per_day.sql.
+                INSERT INTO AttendanceRecords (SessionId, StudentId, Status, Remarks)
+                SELECT keep.Id, a.StudentId, a.Status, a.Remarks
+                  FROM AttendanceSessions s
+                  JOIN AttendanceSessions keep
+                    ON keep.ClassId = s.ClassId
+                   AND keep.SectionId IS NOT DISTINCT FROM s.SectionId
+                   AND keep.Date = s.Date
+                   AND keep.Id > s.Id
+                  JOIN AttendanceRecords a ON a.SessionId = s.Id
+                 WHERE NOT EXISTS (
+                       SELECT 1 FROM AttendanceRecords existing
+                       WHERE existing.SessionId = keep.Id
+                         AND existing.StudentId = a.StudentId
+                 );
+                DELETE FROM AttendanceSessions s
+                 WHERE EXISTS (
+                       SELECT 1 FROM AttendanceSessions newer
+                       WHERE newer.ClassId = s.ClassId
+                         AND newer.SectionId IS NOT DISTINCT FROM s.SectionId
+                         AND newer.Date = s.Date
+                         AND newer.Id > s.Id
+                 );
+                CREATE UNIQUE INDEX IF NOT EXISTS ux_attendancesessions_day
+                    ON AttendanceSessions (ClassId, SectionId, Date);
+
+                -- One mark per student per session. The re-mark path updates in
+                -- place rather than insert-then-delete, which needs this.
+                DELETE FROM AttendanceRecords a
+                 USING AttendanceRecords b
+                 WHERE a.StudentId = b.StudentId
+                   AND a.SessionId = b.SessionId
+                   AND a.Id < b.Id;
+                CREATE UNIQUE INDEX IF NOT EXISTS ux_attendancerecords_student
+                    ON AttendanceRecords (SessionId, StudentId);
+
                 -- ==========================================
                 -- ASSIGNMENTS
                 -- ==========================================

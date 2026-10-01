@@ -18,16 +18,25 @@ The API is covered by an xUnit integration suite (`SchoolHub.Tests`) that runs t
    - Deletes are guarded. A class holding enrollments, a section holding enrollments, or a subject referenced by class-subject mappings, assignments, exams or timetable entries is refused with a count of what blocks it, rather than surfacing a foreign-key error. Deleting a class with no enrollments clears its sections and subject mappings in the same call.
    - Duplicate class names, duplicate section names within a class, and duplicate subject codes are rejected as `400` with a message naming the conflict. Section names are deliberately reusable across classes.
    - Setting a class's subjects replaces the whole set transactionally, and validates every id up front so a typo returns `400` naming the bad id and leaves the previous mapping untouched.
-4. **Teacher Features**: My Classes, My Subjects, Attendance (`/api/teacher-portal/*`).
-5. **Assignment System**: Creation, Attachments, Submissions, Grading & Feedback (`/api/assignments/*`).
-6. **Examination & Results**: Exam Management, Marks Entry, Automated Percentage & Grading Calculation (`/api/exams/*`).
-7. **Fee Management**: Fee Structures, Student Fees, Invoices, Payments (`/api/fees/*`).
-8. **Timetable & Schedule**: TimeSlots, TimetableEntries.
-9. **Announcements & Notifications**: Announcements, Notifications, UserDevices (Mark read, delete, etc.) (`/api/announcements/*`, `/api/schoolextensions/notifications`).
-10. **Events & Calendar**: Events, EventParticipants.
-11. **Portals & Reports**: Student & Parent Portals (multi-child switching), Admin Reports (`/api/portals/*`, `/api/reports/*`).
-12. **File Management & Audit Logs**: File metadata storage and administrative audit tracking (`/api/files/*`, `/api/auditlogs/*`).
-13. **Security & DevOps**: Global Exception Handling, CORS, Docker containerization, .env support.
+4. **Attendance Marking**: Per-section daily marking, correction of a marked day, marking history, and each student's own record (`/api/attendance/*`).
+   - Staff (`Admin` and `Teacher`) load a roster for a class, section and date, mark each student, and save the day as one session. `GET /api/attendance/roster`, `GET /api/attendance/sessions`, `GET /api/attendance/sessions/{id}`, `POST /api/attendance/session`, `PUT /api/attendance/sessions/{id}`.
+   - **One session per class, section and date.** A second mark for the same day is refused with `409` and the existing session id, so the UI opens the stored day for correction instead of adding another. Backed by `ux_attendancesessions_day`, since the duplicate used to double-count a day in a student's percentage.
+   - A day's marks are written in one transaction, so a rejected record never leaves a half-marked session behind.
+   - Exactly four statuses are accepted — `Present`, `Absent`, `Late`, `Excused`. Anything else is a `400`. The column was previously free text, so a typo was stored as a fifth status that no report counted and the student's percentage silently rose. `ux_attendancerecords_student` also makes the marks one-per-student-per-session, which is what lets a correction update in place instead of re-inserting.
+   - Marks must belong to the section being marked; a stray id is refused with the offending ids named. An empty roster or a payload listing the same student twice is also refused.
+   - Editing updates each mark in place, so a correction cannot duplicate a student or orphan their original remark, and a session cannot be moved to a different class or section.
+   - `GET /api/attendance/mine` returns the signed-in student's own record without the page needing to know its `Students.Id`, which no other endpoint exposed.
+   - `GET /api/attendance/student/{studentId}` is scoped through `StudentAccess`: staff may read anyone, a Student only themselves, a Parent only a child linked in `studentparents`. Every row carries `ClassName` and `SectionName` so the student and parent views need no second lookup.
+5. **Teacher Features**: My Classes, My Subjects, Attendance history (`/api/teacher-portal/*`).
+6. **Assignment System**: Creation, Attachments, Submissions, Grading & Feedback (`/api/assignments/*`).
+7. **Examination & Results**: Exam Management, Marks Entry, Automated Percentage & Grading Calculation (`/api/exams/*`).
+8. **Fee Management**: Fee Structures, Student Fees, Invoices, Payments (`/api/fees/*`).
+9. **Timetable & Schedule**: TimeSlots, TimetableEntries.
+10. **Announcements & Notifications**: Announcements, Notifications, UserDevices (Mark read, delete, etc.) (`/api/announcements/*`, `/api/schoolextensions/notifications`).
+11. **Events & Calendar**: Events, EventParticipants.
+12. **Portals & Reports**: Student & Parent Portals (multi-child switching), Admin Reports (`/api/portals/*`, `/api/reports/*`).
+13. **File Management & Audit Logs**: File metadata storage and administrative audit tracking (`/api/files/*`, `/api/auditlogs/*`).
+14. **Security & DevOps**: Global Exception Handling, CORS, Docker containerization, .env support.
 
 ## Tech Stack
 
@@ -73,8 +82,14 @@ development database. It does not touch pre-existing rows outside the academic
 fixtures it creates and cleans up.
 
 Current coverage: authorization matrix for every role and endpoint, error mapping,
-SQL column-name normalisation, student management and scoping, and academic CRUD
-including the delete guards and class-subject mapping.
+SQL column-name normalisation, student management and scoping, academic CRUD
+including the delete guards and class-subject mapping, and the attendance marking
+flow including the one-session-per-day guard, status validation, in-place editing
+and learner scoping.
+
+Test classes that build throwaway academic rows (`AT-*` classes) clean them up in
+`IAsyncLifetime.DisposeAsync` rather than only between their own tests, so they do
+not change what other tests see when the whole suite runs in one pass.
 
 ## API Documentation
 
@@ -88,6 +103,7 @@ Swagger UI available at `/swagger` when running in Development mode.
 - AcademicYears, Classes, Sections, Subjects
 - TeacherSubjects, TimeSlots, TimetableEntries
 - Assignments, AssignmentSubmissions
+- AttendanceSessions, AttendanceRecords (one session per class/section/date, one mark per student per session)
 - Exams, ExamMarks
 - FeeStructures, StudentFees, FeeInvoices, FeePayments
 - Announcements, Notifications, UserDevices
@@ -106,6 +122,7 @@ Schema changes that cannot be expressed as `CREATE TABLE IF NOT EXISTS` live in
 | `002_admin_password_and_login_guard.sql` | Moves the bootstrap admin to a hashed password and refuses login on an inactive account. |
 | `003_enrollment_one_per_student.sql` | Adds `ux_enrollments_studentid`: a student belongs to exactly one class. |
 | `004_merge_duplicate_classes.sql` | Merges the duplicate class rows in the dev database into one row per grade, repoints sections, enrollments, class-subject mappings, fee structures and attendance, and adds `ux_classes_name` / `ux_sections_class_name`. |
+| `005_one_attendance_session_per_day.sql` | Collapses duplicate attendance sessions for the same class, section and date, carrying each duplicate's marks onto the newest session so none are lost, then adds `ux_attendancesessions_day` and `ux_attendancerecords_student`. |
 
 `004` is written to be re-runnable: every step is guarded by an existence check, so
 a partial application can be resumed by running it again.
