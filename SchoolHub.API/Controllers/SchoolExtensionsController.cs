@@ -5,6 +5,7 @@ using Npgsql;
 using SchoolHub.API.Security;
 using System.Data;
 using System.Globalization;
+using System.Linq;
 using System.Security.Claims;
 
 namespace SchoolHub.API.Controllers
@@ -371,21 +372,174 @@ namespace SchoolHub.API.Controllers
         }
 
         // --- EVENTS ---
+        // An event is created and owned by staff, and everyone it concerns says
+        // whether they are coming. Reads are open to any signed-in user because
+        // the list carries the caller's own response (MyStatus) and the response
+        // count; only staff may change the event, and only the caller (or staff)
+        // may remove a response.
+        private static readonly string[] EventStatuses =
+            { "Invited", "Attending", "Not Attending", "Maybe" };
+
+        private static string? ValidateEvent(SaveEventDto dto, out string title, out string? location)
+        {
+            title = (dto.Title ?? string.Empty).Trim();
+            location = string.IsNullOrWhiteSpace(dto.Location) ? null : dto.Location.Trim();
+
+            if (title.Length == 0)
+                return "Event title is required.";
+            if (title.Length > 255)
+                return "Event title must be 255 characters or fewer.";
+            if (location is { Length: > 255 })
+                return "Location must be 255 characters or fewer.";
+            if (dto.EventDate == default)
+                return "Event date is required.";
+
+            return null;
+        }
+
+        private const string EventSelect =
+            @"SELECT e.Id, e.Title, e.Description, e.EventDate, e.Location,
+                     (SELECT COUNT(*) FROM EventParticipants p WHERE p.EventId = e.Id) AS ParticipantCount,
+                     (SELECT p.Status FROM EventParticipants p
+                       WHERE p.EventId = e.Id AND p.UserId = @UserId) AS MyStatus
+              FROM Events e";
+
         [HttpGet("events")]
         public async Task<IActionResult> GetEvents()
         {
             using var db = Connection;
-            return Ok(await db.QueryAsync("SELECT * FROM Events ORDER BY EventDate ASC"));
+            var rows = await db.QueryAsync(
+                EventSelect + " ORDER BY e.EventDate ASC",
+                new { UserId = StudentAccess.CallerUserId(User) });
+            return Ok(rows);
+        }
+
+        [HttpGet("events/{id}")]
+        public async Task<IActionResult> GetEvent(int id)
+        {
+            using var db = Connection;
+            var row = await db.QuerySingleOrDefaultAsync(
+                EventSelect + " WHERE e.Id = @Id",
+                new { Id = id, UserId = StudentAccess.CallerUserId(User) });
+            if (row == null) return NotFound(new { Message = "Event not found." });
+            return Ok(row);
+        }
+
+        [HttpGet("events/{id}/participants")]
+        public async Task<IActionResult> GetEventParticipants(int id)
+        {
+            using var db = Connection;
+            var exists = await db.ExecuteScalarAsync<int?>(
+                "SELECT Id FROM Events WHERE Id = @Id", new { Id = id });
+            if (!exists.HasValue) return NotFound(new { Message = "Event not found." });
+
+            var rows = await db.QueryAsync(
+                @"SELECT u.Id AS UserId, u.Username, p.Status
+                  FROM EventParticipants p
+                  JOIN Users u ON u.Id = p.UserId
+                  WHERE p.EventId = @Id
+                  ORDER BY u.Username",
+                new { Id = id });
+            return Ok(rows);
         }
 
         [HttpPost("events")]
         [Authorize(Roles = "Admin")]
-        public async Task<IActionResult> CreateEvent([FromBody] CreateEventDto dto)
+        public async Task<IActionResult> CreateEvent([FromBody] SaveEventDto dto)
         {
             using var db = Connection;
-            var sql = "INSERT INTO Events (Title, Description, EventDate, Location) VALUES (@Title, @Description, @EventDate, @Location) RETURNING Id;";
-            var id = await db.ExecuteScalarAsync<int>(sql, dto);
+            var error = ValidateEvent(dto, out var title, out var location);
+            if (error != null) return BadRequest(new { Message = error });
+
+            var duplicate = await db.ExecuteScalarAsync<int?>(
+                @"SELECT Id FROM Events
+                  WHERE lower(btrim(Title)) = lower(@Title) AND EventDate = @EventDate",
+                new { Title = title, dto.EventDate });
+            if (duplicate.HasValue)
+                return Conflict(new { Message = "An event with that title already exists on that date." });
+
+            var id = await db.ExecuteScalarAsync<int>(
+                @"INSERT INTO Events (Title, Description, EventDate, Location)
+                  VALUES (@Title, @Description, @EventDate, @Location)
+                  RETURNING Id",
+                new { Title = title, Description = dto.Description, dto.EventDate, Location = location });
             return Ok(new { Message = "Event created successfully", Id = id });
+        }
+
+        [HttpPut("events/{id}")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> UpdateEvent(int id, [FromBody] SaveEventDto dto)
+        {
+            using var db = Connection;
+            var error = ValidateEvent(dto, out var title, out var location);
+            if (error != null) return BadRequest(new { Message = error });
+
+            var exists = await db.ExecuteScalarAsync<int?>(
+                "SELECT Id FROM Events WHERE Id = @Id", new { Id = id });
+            if (!exists.HasValue) return NotFound(new { Message = "Event not found." });
+
+            var duplicate = await db.ExecuteScalarAsync<int?>(
+                @"SELECT Id FROM Events
+                  WHERE lower(btrim(Title)) = lower(@Title) AND EventDate = @EventDate AND Id <> @Id",
+                new { Title = title, dto.EventDate, Id = id });
+            if (duplicate.HasValue)
+                return Conflict(new { Message = "An event with that title already exists on that date." });
+
+            await db.ExecuteAsync(
+                @"UPDATE Events
+                  SET Title = @Title, Description = @Description,
+                      EventDate = @EventDate, Location = @Location
+                  WHERE Id = @Id",
+                new { Title = title, Description = dto.Description, dto.EventDate, Location = location, Id = id });
+            return Ok(new { Message = "Event updated successfully" });
+        }
+
+        [HttpDelete("events/{id}")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> DeleteEvent(int id)
+        {
+            using var db = Connection;
+            var affected = await db.ExecuteAsync("DELETE FROM Events WHERE Id = @Id", new { Id = id });
+            if (affected == 0) return NotFound(new { Message = "Event not found." });
+            return Ok(new { Message = "Event deleted successfully" });
+        }
+
+        [HttpPut("events/{id}/rsvp")]
+        public async Task<IActionResult> SetEventRsvp(int id, [FromBody] RsvpDto dto)
+        {
+            using var db = Connection;
+            var status = (dto.Status ?? string.Empty).Trim();
+            var canonical = EventStatuses.FirstOrDefault(
+                s => s.Equals(status, StringComparison.OrdinalIgnoreCase));
+            if (canonical == null)
+                return BadRequest(new { Message = "Status must be Invited, Attending, Not Attending or Maybe." });
+
+            var exists = await db.ExecuteScalarAsync<int?>(
+                "SELECT Id FROM Events WHERE Id = @Id", new { Id = id });
+            if (!exists.HasValue) return NotFound(new { Message = "Event not found." });
+
+            await db.ExecuteAsync(
+                @"INSERT INTO EventParticipants (EventId, UserId, Status)
+                  VALUES (@Id, @UserId, @Status)
+                  ON CONFLICT (EventId, UserId) DO UPDATE SET Status = EXCLUDED.Status",
+                new { Id = id, UserId = StudentAccess.CallerUserId(User), Status = canonical });
+
+            return Ok(new { Message = "Response saved", Status = canonical });
+        }
+
+        [HttpDelete("events/{id}/participants/{userId}")]
+        public async Task<IActionResult> RemoveEventParticipant(int id, int userId)
+        {
+            using var db = Connection;
+            var caller = StudentAccess.CallerUserId(User);
+            var isStaff = User.IsInRole("Admin") || User.IsInRole("Teacher");
+            if (!isStaff && caller != userId) return Forbid();
+
+            var affected = await db.ExecuteAsync(
+                "DELETE FROM EventParticipants WHERE EventId = @Id AND UserId = @UserId",
+                new { Id = id, UserId = userId });
+            if (affected == 0) return NotFound(new { Message = "That user is not on this event." });
+            return Ok(new { Message = "Response removed" });
         }
 
         // --- NOTIFICATIONS ---
@@ -557,12 +711,17 @@ namespace SchoolHub.API.Controllers
         public string? Label { get; set; }
     }
 
-    public class CreateEventDto
+    public class SaveEventDto
     {
         public string Title { get; set; } = string.Empty;
-        public string Description { get; set; } = string.Empty;
+        public string? Description { get; set; }
         public DateTime EventDate { get; set; }
-        public string Location { get; set; } = string.Empty;
+        public string? Location { get; set; }
+    }
+
+    public class RsvpDto
+    {
+        public string? Status { get; set; }
     }
 
     public class CreateNotificationDto

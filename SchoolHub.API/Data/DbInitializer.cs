@@ -461,16 +461,23 @@ namespace SchoolHub.API.Data
                 -- ==========================================
                 CREATE TABLE IF NOT EXISTS Events (
                     Id SERIAL PRIMARY KEY,
-                    Title VARCHAR(255) NOT NULL,
+                    Title VARCHAR(255) NOT NULL CHECK (btrim(Title) <> ''),
                     Description TEXT,
                     EventDate TIMESTAMP WITH TIME ZONE NOT NULL,
                     Location VARCHAR(255)
                 );
 
+                -- Same title and timestamp is one event, not two; a recurring
+                -- event runs on a different date. See migrations/009_events.sql.
+                CREATE UNIQUE INDEX IF NOT EXISTS ux_events_title_date
+                    ON Events (lower(btrim(Title)), EventDate);
+                CREATE INDEX IF NOT EXISTS ix_events_eventdate ON Events (EventDate);
+
                 CREATE TABLE IF NOT EXISTS EventParticipants (
                     EventId INT REFERENCES Events(Id) ON DELETE CASCADE,
                     UserId INT REFERENCES Users(Id) ON DELETE CASCADE,
-                    Status VARCHAR(50) DEFAULT 'Attending',
+                    Status VARCHAR(50) NOT NULL DEFAULT 'Invited'
+                        CHECK (Status IN ('Invited', 'Attending', 'Not Attending', 'Maybe')),
                     PRIMARY KEY (EventId, UserId)
                 );
 

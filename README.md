@@ -6,7 +6,7 @@ Production-quality School Management System API built with C# / ASP.NET Core Web
 
 All milestones implemented with full CRUD, authentication, role-based access, and comprehensive feature coverage.
 
-The API is covered by an xUnit integration suite (`SchoolHub.Tests`) that runs the real endpoints against a live PostgreSQL database. Current state: **235 passing tests**.
+The API is covered by an xUnit integration suite (`SchoolHub.Tests`) that runs the real endpoints against a live PostgreSQL database. Current state: **243 passing tests**.
 
 ## Features & Module Coverage
 
@@ -59,7 +59,11 @@ The API is covered by an xUnit integration suite (`SchoolHub.Tests`) that runs t
    - A period still scheduled into the timetable cannot be deleted — the `ON DELETE CASCADE` would silently wipe its entries — and is refused with the entry count.
    - Reads are scoped. `GET /api/schoolextensions/timetable?classId=&sectionId=` is for staff; `GET /api/schoolextensions/timetable/mine` resolves a Student's own class, or a Teacher's own lessons, server-side; `GET /api/schoolextensions/timetable/student/{id}` goes through `StudentAccess` (staff anyone, Student self, Parent linked child).
 10. **Announcements & Notifications**: Announcements, Notifications, UserDevices (Mark read, delete, etc.) (`/api/announcements/*`, `/api/schoolextensions/notifications`).
-11. **Events & Calendar**: Events, EventParticipants.
+11. **Events & Calendar**: Events, EventParticipants (`/api/schoolextensions/events/*`).
+    - **Events were list-and-create only before this.** Nothing could correct or cancel one, `EventParticipants` was unreadable, and its `Status` was free text the UI had no rendering for.
+    - Admin create, edit and delete events (`POST/PUT/DELETE /api/schoolextensions/events`, `/api/schoolextensions/events/{id}`); every signed-in role may read them. A blank title is refused (`ck_events_title`) and the same title on the same date is a duplicate, refused with 409 (`ux_events_title_date`); a different date is a legitimate repeat.
+    - Everyone records their own response with `PUT /api/schoolextensions/events/{id}/rsvp`, upserted on `(EventId, UserId)` and constrained to `Invited`/`Attending`/`Not Attending`/`Maybe` (`ck_eventparticipants_status`). `GET /api/schoolextensions/events` carries the caller's own `MyStatus` and the response count; `GET /api/schoolextensions/events/{id}/participants` lists who responded.
+    - Responses are moderated through `DELETE /api/schoolextensions/events/{id}/participants/{userId}`: staff may remove anyone, a learner only their own row. Deleting an event takes its responses with it.
 12. **Portals & Reports**: Student & Parent Portals (multi-child switching), Admin Reports (`/api/portals/*`, `/api/reports/*`). Reports include `students-by-class` and a `fee-collection` summary grouped by derived fee status.
 13. **File Management & Audit Logs**: File metadata storage and administrative audit tracking (`/api/files/*`, `/api/auditlogs/*`).
 14. **Security & DevOps**: Global Exception Handling, CORS, Docker containerization, .env support.
@@ -121,11 +125,15 @@ guards, the learner ledger and the grouped report. The timetable flow adds 10
 tests covering period validation and overlap, entry validation (day, section,
 offered subject, period), the section and teacher clash guards, in-place update,
 the delete guard for a period in use, week ordering, the learner's own-class
-read and its scoping, and admin-only writes.
+read and its scoping, and admin-only writes. The event flow adds 8 tests covering
+title/date validation, the same-title-same-date duplicate, edit and delete,
+unknown-id 404s, RSVP upsert and list visibility, invalid-status rejection,
+staff-versus-self participant removal, and admin-only event writes.
 
-Test classes that build throwaway academic rows (`AT-*`, `EX-*` and `TT-*` classes) clean
-them up in `IAsyncLifetime.DisposeAsync` rather than only between their own tests, so they do
-not change what other tests see when the whole suite runs in one pass.
+Test classes that build throwaway academic rows (`AT-*`, `EX-*` and `TT-*` classes) and
+throwaway events (`EV-*`) clean them up in `IAsyncLifetime.DisposeAsync` rather than only
+between their own tests, so they do not change what other tests see when the whole suite
+runs in one pass.
 
 ## API Documentation
 
@@ -162,19 +170,21 @@ Schema changes that cannot be expressed as `CREATE TABLE IF NOT EXISTS` live in
 | `006_scope_exam_subjects_to_class.sql` | Adds non-null `ExamSubjects.ClassId` referencing `Classes` with `ON DELETE RESTRICT`, collapsing any duplicate `(ExamId, SubjectId)` paper onto the newest row first so no marks are lost. Adds `ux_examsubjects_exam_class_subject`, `ux_marks_examsubject_student`, and the `ck_examsubjects_maxmarks` / `ck_marks_nonnegative` / `ck_exams_passingmarks` / `ck_exams_dates` checks. |
 | `007_fees_ledger.sql` | Gives fees a write path: adds `Payments.StudentFeeId` (`ON DELETE CASCADE`), makes `StudentFees.StudentId`/`FeeStructureId` non-null (refusing if orphans exist), drops the stored `StudentFees.Status`, and adds `ux_studentfees_student_structure`, `ux_feestructures_name` and the `ck_payments_target` / `ck_feestructures_amount` / `ck_payments_amountpaid` checks. |
 | `008_timetable.sql` | Gives the timetable a write path: adds the `ck_timeslots_range` and `ck_timetableentries_day` checks, `ux_timetableentries_section_slot` (one subject per section per period per day) and the partial `ux_timetableentries_teacher_slot` (one class per teacher per period per day). |
+| `009_events.sql` | Gives events a lifecycle: adds the `ck_events_title` check, `ux_events_title_date` (one event per title and date) and `ix_events_eventdate`, normalises `EventParticipants.Status` and makes it non-null with the `ck_eventparticipants_status` check. |
 
 `004` is written to be re-runnable: every step is guarded by an existence check, so
 a partial application can be resumed by running it again. `006` is guarded the same
 way and was verified against the dev database twice with no change on the second run.
 `007` is guarded with the same `pg_constraint` / `IF NOT EXISTS` checks and is safe to
 re-run. `008` uses the same guards and was verified against the dev database twice
-with no change on the second run.
+with no change on the second run. `009` uses the same guards and was likewise
+verified twice with only notices on the second run.
 
 Fresh databases get the equivalent guarantees from `DbInitializer`, which creates
 `ux_enrollments_studentid`, `ux_classes_name`, `ux_sections_class_name`,
 `ux_examsubjects_exam_class_subject` and `ux_marks_examsubject_student` alongside
-the tables, plus the `007`/`008` fee and timetable constraints and indexes above,
-and reads `Exams.PassingMarks` as a percentage between 0 and 100.
+the tables, plus the `007`/`008`/`009` fee, timetable and event constraints and
+indexes above, and reads `Exams.PassingMarks` as a percentage between 0 and 100.
 Apply the migrations before starting the API against an existing database.
 
 ## Response Casing
