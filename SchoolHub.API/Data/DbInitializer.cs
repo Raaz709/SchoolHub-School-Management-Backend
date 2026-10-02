@@ -437,12 +437,18 @@ namespace SchoolHub.API.Data
                 -- ==========================================
                 CREATE TABLE IF NOT EXISTS Announcements (
                     Id SERIAL PRIMARY KEY,
-                    Title VARCHAR(255) NOT NULL,
-                    Content TEXT NOT NULL,
-                    TargetRole VARCHAR(50),
+                    Title VARCHAR(255) NOT NULL CHECK (btrim(Title) <> ''),
+                    Content TEXT NOT NULL CHECK (btrim(Content) <> ''),
+                    TargetRole VARCHAR(50) NOT NULL DEFAULT 'All'
+                        CHECK (TargetRole IN ('All', 'Admin', 'Teacher', 'Student', 'Parent')),
                     ClassId INT REFERENCES Classes(Id) ON DELETE SET NULL,
+                    AuthorId INT REFERENCES Users(Id) ON DELETE SET NULL,
                     CreatedAt TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                 );
+
+                CREATE INDEX IF NOT EXISTS ix_announcements_authorid ON Announcements (AuthorId);
+                CREATE INDEX IF NOT EXISTS ix_announcements_createdat ON Announcements (CreatedAt);
+                CREATE INDEX IF NOT EXISTS ix_announcements_classid ON Announcements (ClassId);
 
                 CREATE TABLE IF NOT EXISTS Notifications (
                     Id SERIAL PRIMARY KEY,

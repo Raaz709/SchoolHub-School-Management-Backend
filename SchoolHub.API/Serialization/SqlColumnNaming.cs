@@ -51,6 +51,7 @@ public static class SqlColumnNaming
             ["academicyearname"] = "AcademicYearName",
             ["admissiondate"] = "AdmissionDate",
             ["attachmenturl"] = "AttachmentUrl",
+            ["authorname"] = "AuthorName",
             ["classid"] = "ClassId",
             ["classcount"] = "ClassCount",
             ["classname"] = "ClassName",

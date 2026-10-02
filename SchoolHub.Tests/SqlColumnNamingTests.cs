@@ -62,6 +62,7 @@ public class SqlColumnNamingTests
     [InlineData("feename", "FeeName")]
     [InlineData("totalstudentsmarked", "TotalStudentsMarked")]
     [InlineData("attachmenturl", "AttachmentUrl")]
+    [InlineData("authorname", "AuthorName")]
     [InlineData("filepath", "FilePath")]
     [InlineData("submittedat", "SubmittedAt")]
     [InlineData("submissioncount", "SubmissionCount")]
@@ -112,7 +113,7 @@ public class SqlColumnNamingTests
             "hiredate", "admissiondate", "classname", "sectionname",
             "departmentname", "subjectname", "targetrole", "isread", "maxscore",
             "studentname", "feename", "totalstudentsmarked",
-            "attachmenturl", "filepath", "submittedat", "submissioncount",
+            "attachmenturl", "authorname", "filepath", "submittedat", "submissioncount",
             "mysubmissionid", "mysubmittedat", "myscore", "myfeedback", "myfilepath",
         };
 

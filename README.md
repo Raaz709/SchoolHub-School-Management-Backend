@@ -6,7 +6,7 @@ Production-quality School Management System API built with C# / ASP.NET Core Web
 
 All milestones implemented with full CRUD, authentication, role-based access, and comprehensive feature coverage.
 
-The API is covered by an xUnit integration suite (`SchoolHub.Tests`) that runs the real endpoints against a live PostgreSQL database. Current state: **261 passing tests**.
+The API is covered by an xUnit integration suite (`SchoolHub.Tests`) that runs the real endpoints against a live PostgreSQL database. Current state: **269 passing tests**.
 
 ## Features & Module Coverage
 
@@ -66,6 +66,11 @@ The API is covered by an xUnit integration suite (`SchoolHub.Tests`) that runs t
    - A period still scheduled into the timetable cannot be deleted — the `ON DELETE CASCADE` would silently wipe its entries — and is refused with the entry count.
    - Reads are scoped. `GET /api/schoolextensions/timetable?classId=&sectionId=` is for staff; `GET /api/schoolextensions/timetable/mine` resolves a Student's own class, or a Teacher's own lessons, server-side; `GET /api/schoolextensions/timetable/student/{id}` goes through `StudentAccess` (staff anyone, Student self, Parent linked child).
 10. **Announcements & Notifications**: Announcements, Notifications, UserDevices (Mark read, delete, etc.) (`/api/announcements/*`, `/api/schoolextensions/notifications`).
+    - **Announcements were read-and-post only before this.** Any signed-in user read every notice regardless of audience, and only the title/content were stored — no author, no class targeting policy, no way to edit or withdraw a notice.
+    - Staff (`Admin` and `Teacher`) publish and manage notices: `GET/POST /api/announcements`, `GET/PUT/DELETE /api/announcements/{id}`. A blank title or content (`ck_announcements_title`, `ck_announcements_content`), a `TargetRole` outside `All`/`Admin`/`Teacher`/`Student`/`Parent` (`ck_announcements_targetrole`) or a named class that does not exist is a `400`; an unknown id is a `404`.
+    - **Reads are scoped to the audience.** Admin and Teacher see everything; a Student sees `TargetRole IN ('All','Student')` notices whose `ClassId` is null or their own enrolled class; a Parent sees `TargetRole IN ('All','Parent')` notices for the whole school or any of their children's classes. An out-of-scope id is a `404`, indistinguishable from one that does not exist.
+    - Write is limited to `Admin`/`Teacher`, and to the author or an `Admin` on update and delete (anyone else is refused with `403`). Each notice carries its `AuthorId` (`ON DELETE SET NULL`) and joins `ClassName` and `AuthorName` for the UI.
+    - Notifications live under `/api/schoolextensions/notifications`: list, `unread-count`, create (staff), mark-one-read, `read-all` and delete. The inbox is the signed-in user's own `NotificationRecipients` rows, so a notification always reflects the caller.
 11. **Events & Calendar**: Events, EventParticipants (`/api/schoolextensions/events/*`).
     - **Events were list-and-create only before this.** Nothing could correct or cancel one, `EventParticipants` was unreadable, and its `Status` was free text the UI had no rendering for.
     - Admin create, edit and delete events (`POST/PUT/DELETE /api/schoolextensions/events`, `/api/schoolextensions/events/{id}`); every signed-in role may read them. A blank title is refused (`ck_events_title`) and the same title on the same date is a duplicate, refused with 409 (`ux_events_title_date`); a different date is a legitimate repeat.
@@ -139,10 +144,14 @@ staff-versus-self participant removal, and admin-only event writes. The assignme
 flow adds 9 tests covering create/update validation, owner-versus-admin management,
 non-owner refusals, learner write restrictions, the class-subject read scoping and
 its hidden-id 404, submission upsert, rejection of work set for another class, and
-score bounds plus learner-visible feedback.
+score bounds plus learner-visible feedback. The announcement flow adds 7 tests
+covering validation 400s, update and delete with author attribution, unknown-id
+404s, the role-based audience scoping for student, parent, admin and teacher,
+class-targeted visibility, teacher ownership 403s and staff-only writes.
 
 Test classes that build throwaway academic rows (`AT-*`, `EX-*`, `TT-*` classes and
-`AS-*` subjects, classes and assignments) and throwaway events (`EV-*`) clean them up in
+`AS-*` subjects, classes and assignments), throwaway events (`EV-*`) and throwaway
+announcements (`AN-*`) clean them up in
 `IAsyncLifetime.DisposeAsync` rather than only between their own tests, so they do not
 change what other tests see when the whole suite runs in one pass.
 
@@ -183,6 +192,7 @@ Schema changes that cannot be expressed as `CREATE TABLE IF NOT EXISTS` live in
 | `008_timetable.sql` | Gives the timetable a write path: adds the `ck_timeslots_range` and `ck_timetableentries_day` checks, `ux_timetableentries_section_slot` (one subject per section per period per day) and the partial `ux_timetableentries_teacher_slot` (one class per teacher per period per day). |
 | `009_events.sql` | Gives events a lifecycle: adds the `ck_events_title` check, `ux_events_title_date` (one event per title and date) and `ix_events_eventdate`, normalises `EventParticipants.Status` and makes it non-null with the `ck_eventparticipants_status` check. |
 | `010_assignments.sql` | Gives assignments a lifecycle: adds the `ck_assignments_title` and `ck_assignments_maxscore` checks, makes `Assignments.SubjectId` non-null, indexes `SubjectId`/`DueDate`, backfills and makes `AssignmentSubmissions.SubmittedAt` non-null with a `CURRENT_TIMESTAMP` default, and adds `ux_assignmentsubmissions_assignment_student`, `ix_assignmentsubmissions_studentid` and the `ck_assignmentsubmissions_score` check. |
+| `011_announcements.sql` | Gives announcements an author and an audience policy: adds `AuthorId` (`ON DELETE SET NULL`) and `ix_announcements_authorid`, normalises `TargetRole` (null/blank/unknown to `All`) and makes it non-null with an `All` default plus the `ck_announcements_targetrole` check, adds the `ck_announcements_title` / `ck_announcements_content` checks, and indexes `CreatedAt`/`ClassId`. |
 
 `004` is written to be re-runnable: every step is guarded by an existence check, so
 a partial application can be resumed by running it again. `006` is guarded the same
@@ -191,15 +201,16 @@ way and was verified against the dev database twice with no change on the second
 re-run. `008` uses the same guards and was verified against the dev database twice
 with no change on the second run. `009` uses the same guards and was likewise
 verified twice with only notices on the second run. `010` uses the same guards and
-was likewise verified twice with only notices on the second run.
+was likewise verified twice with only notices on the second run. `011` uses the same
+guards and was likewise verified twice with only notices on the second run.
 
 Fresh databases get the equivalent guarantees from `DbInitializer`, which creates
 `ux_enrollments_studentid`, `ux_classes_name`, `ux_sections_class_name`,
 `ux_examsubjects_exam_class_subject` and `ux_marks_examsubject_student` alongside
-the tables, plus the `007`/`008`/`009`/`010` fee, timetable, event and assignment
-constraints and indexes above, and reads `Exams.PassingMarks` as a percentage
-between 0 and 100. Apply the migrations before starting the API against an existing
-database.
+the tables, plus the `007`/`008`/`009`/`010`/`011` fee, timetable, event, assignment
+and announcement constraints and indexes above, and reads `Exams.PassingMarks` as a
+percentage between 0 and 100. Apply the migrations before starting the API against an
+existing database.
 
 ## Response Casing
 
