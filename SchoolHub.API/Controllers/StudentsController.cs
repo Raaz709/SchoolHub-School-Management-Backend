@@ -292,11 +292,31 @@ namespace SchoolHub.API.Controllers
             using var db = Connection;
             if (!await StudentAccess.CanReadStudentAsync(db, User, id)) return Forbid();
             var sql = @"
-                SELECT sf.Id, sf.DueDate, sf.Status, fs.Name as FeeName, fs.Amount
+                SELECT sf.Id, sf.DueDate, fs.Name as FeeName, fs.Amount,
+                       COALESCE(p.Paid, 0) as Paid,
+                       fs.Amount - COALESCE(p.Paid, 0) as Outstanding
                 FROM StudentFees sf
                 JOIN FeeStructures fs ON sf.FeeStructureId = fs.Id
-                WHERE sf.StudentId = @StudentId";
-            return Ok(await db.QueryAsync(sql, new { StudentId = id }));
+                LEFT JOIN LATERAL (
+                    SELECT sum(pp.AmountPaid) AS Paid FROM Payments pp WHERE pp.StudentFeeId = sf.Id
+                ) p ON TRUE
+                WHERE sf.StudentId = @StudentId
+                ORDER BY sf.DueDate";
+            // Status is derived, not stored, so the ledger cannot drift away from
+            // the sum of payments.
+            var ledger = (await db.QueryAsync<StudentFeeLedgerRow>(sql, new { StudentId = id })).Select(r =>
+                new
+                {
+                    r.Id,
+                    r.FeeName,
+                    r.Amount,
+                    r.Paid,
+                    r.Outstanding,
+                    r.DueDate,
+                    Status = FeesController.Derive(r.Amount, r.Paid, r.DueDate)
+                });
+
+            return Ok(ledger);
         }
 
         [HttpGet("{id}/assignments")]
@@ -334,5 +354,20 @@ namespace SchoolHub.API.Controllers
     {
         public int ClassId { get; set; }
         public int SectionId { get; set; }
+    }
+
+    /// <summary>
+    /// One row of a student's fee ledger. Typed rather than read as a dynamic
+    /// row: the derived status calls a strongly-typed helper, and the runtime
+    /// binder cannot convert a dynamic <c>object</c> back to <c>decimal</c>.
+    /// </summary>
+    public class StudentFeeLedgerRow
+    {
+        public int Id { get; set; }
+        public string FeeName { get; set; } = string.Empty;
+        public decimal Amount { get; set; }
+        public decimal Paid { get; set; }
+        public decimal Outstanding { get; set; }
+        public DateTime DueDate { get; set; }
     }
 }

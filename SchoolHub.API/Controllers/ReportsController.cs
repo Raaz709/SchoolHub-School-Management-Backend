@@ -34,16 +34,46 @@ namespace SchoolHub.API.Controllers
             return Ok(await db.QueryAsync(sql));
         }
 
+        /// <summary>
+        /// How much is billed, collected and outstanding, grouped by derived
+        /// status. The status is computed here with the same precedence as
+        /// <see cref="FeesController.Derive"/>: paid beats overdue beats partial
+        /// beats unpaid. <c>StudentFees</c> no longer has a Status column for the
+        /// report to group on, so it must not read one.
+        /// </summary>
         [HttpGet("fee-collection")]
         public async Task<IActionResult> GetFeeCollectionReport()
         {
             using var db = Connection;
-            var sql = @"
-                SELECT sf.Status, COUNT(sf.Id) as Count, SUM(fs.Amount) as TotalAmount
+            var rows = await db.QueryAsync<FeeCollectionReportRow>(@"
+                SELECT CASE
+                           WHEN COALESCE(p.Paid, 0) >= fs.Amount THEN 'Paid'
+                           WHEN sf.DueDate < CURRENT_DATE THEN 'Overdue'
+                           WHEN COALESCE(p.Paid, 0) > 0 THEN 'Partial'
+                           ELSE 'Unpaid'
+                       END AS Status,
+                       count(*) AS FeeCount,
+                       COALESCE(sum(fs.Amount), 0) AS TotalAmount,
+                       COALESCE(sum(COALESCE(p.Paid, 0)), 0) AS TotalPaid,
+                       COALESCE(sum(fs.Amount - COALESCE(p.Paid, 0)), 0) AS TotalOutstanding
                 FROM StudentFees sf
-                JOIN FeeStructures fs ON sf.FeeStructureId = fs.Id
-                GROUP BY sf.Status";
-            return Ok(await db.QueryAsync(sql));
+                JOIN FeeStructures fs ON fs.Id = sf.FeeStructureId
+                LEFT JOIN LATERAL (
+                    SELECT sum(pp.AmountPaid) AS Paid
+                      FROM Payments pp WHERE pp.StudentFeeId = sf.Id
+                ) p ON TRUE
+                GROUP BY 1
+                ORDER BY 1");
+            return Ok(rows);
+        }
+
+        public class FeeCollectionReportRow
+        {
+            public string Status { get; set; } = string.Empty;
+            public int FeeCount { get; set; }
+            public decimal TotalAmount { get; set; }
+            public decimal TotalPaid { get; set; }
+            public decimal TotalOutstanding { get; set; }
         }
     }
 }

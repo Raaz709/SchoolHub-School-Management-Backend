@@ -6,7 +6,7 @@ Production-quality School Management System API built with C# / ASP.NET Core Web
 
 All milestones implemented with full CRUD, authentication, role-based access, and comprehensive feature coverage.
 
-The API is covered by an xUnit integration suite (`SchoolHub.Tests`) that runs the real endpoints against a live PostgreSQL database. Current state: **146 passing tests**.
+The API is covered by an xUnit integration suite (`SchoolHub.Tests`) that runs the real endpoints against a live PostgreSQL database. Current state: **225 passing tests**.
 
 ## Features & Module Coverage
 
@@ -41,11 +41,20 @@ The API is covered by an xUnit integration suite (`SchoolHub.Tests`) that runs t
    - `GET /api/exams` and `GET /api/exams/{id}` allow `Admin`, `Teacher` and `Student` but exclude `Parent`, matching the nav matrix: a parent sees their child's results and nothing else. Every row carries `ClassCount`, `SubjectCount` and `MarkCount`, because an exam with no papers is the state a new exam starts in and the list gave no way to tell that from a finished one. The list's mark count also had to move off `sum(... IS NOT NULL)`: PostgreSQL has no `sum(boolean)`, so it threw a `500` for every caller.
    - `GET /api/exams/mine` returns the signed-in student's own transcript without the page needing to know its `Students.Id`, which no other endpoint exposed. `GET /api/exams/student/{studentId}` is scoped through `StudentAccess`: staff may read anyone, a Student only themselves, a Parent only a child linked in `studentparents`.
    - Transcripts are rolled up server-side into one row per exam with `PassedCount`, `TotalObtained`, `TotalMax`, `OverallPercentage` and `Passed`. Each exam's own pass percentage is read per exam, so exams with different thresholds are not judged by one shared line. The legacy `GET /api/students/{id}/results` returned no exam id, date or class, so a transcript could not be grouped or ordered.
-8. **Fee Management**: Fee Structures, Student Fees, Invoices, Payments (`/api/fees/*`).
+8. **Fee Management / Collection**: Fee structures, per-student or per-class assignment, and payments against the receivable ledger (`/api/fees/*`).
+   - Admin-only. `GET/POST /api/fees/structures`, `PUT/DELETE /api/fees/structures/{id}`, `GET/POST /api/fees/assignments`, `DELETE /api/fees/assignments/{id}`, `GET/POST /api/fees/payments`, `GET /api/fees/summary`.
+   - **The whole flow was unreachable before this.** Nothing inserted a `StudentFees` row, so the ledger was empty in every database, and the only payment path required an `Invoice` that nothing created either.
+   - **`StudentFees` is the receivable ledger: one row per fee a student owes.** A payment now settles a `StudentFees` row directly (`Payments.StudentFeeId`), so paid, outstanding and status are sums over payments rather than a free-text `Status` column that no code path recomputed. That column is dropped.
+   - **Status is derived on every read, never stored**, with one precedence shared by the admin list, the learner ledger and the collection report: `Paid` (paid ≥ amount), else `Overdue` (due date passed), else `Partial` (some paid), else `Unpaid`. `FeesController.Derive` is the single source of that rule.
+   - Assignment is idempotent. `ux_studentfees_student_structure` makes re-assigning the same fee to the same student a no-op (the response carries `Assigned`/`Skipped` counts), so a class assignment can be re-run safely. A class-scoped fee can only be assigned to its own class.
+   - **Overpayment is refused, not clamped**, naming the outstanding balance, so a mistyped amount comes back to the collector instead of becoming untraceable credit. The read-check-write locks the ledger row `FOR UPDATE`, so two collectors cannot jointly overpay it.
+   - Deletes are guarded: a structure with assignments, or an assignment with payments, is refused with a count/amount of what blocks it, because the cascade would otherwise take the money trail with it. Changing a structure's amount is likewise refused once any student owes it.
+   - Structure names are unique case-insensitively (`ux_feestructures_name`), amounts must be positive (`ck_feestructures_amount`), and a payment must name a target (`ck_payments_target`) with a positive amount (`ck_payments_amountpaid`).
+   - `GET /api/students/{id}/fees` is the learner-scoped ledger, reading the same derived status through `StudentAccess`: staff may read anyone, a Student only themselves, a Parent only a linked child. `GET /api/reports/fee-collection` groups billed/collected/outstanding by that same status.
 9. **Timetable & Schedule**: TimeSlots, TimetableEntries.
 10. **Announcements & Notifications**: Announcements, Notifications, UserDevices (Mark read, delete, etc.) (`/api/announcements/*`, `/api/schoolextensions/notifications`).
 11. **Events & Calendar**: Events, EventParticipants.
-12. **Portals & Reports**: Student & Parent Portals (multi-child switching), Admin Reports (`/api/portals/*`, `/api/reports/*`).
+12. **Portals & Reports**: Student & Parent Portals (multi-child switching), Admin Reports (`/api/portals/*`, `/api/reports/*`). Reports include `students-by-class` and a `fee-collection` summary grouped by derived fee status.
 13. **File Management & Audit Logs**: File metadata storage and administrative audit tracking (`/api/files/*`, `/api/auditlogs/*`).
 14. **Security & DevOps**: Global Exception Handling, CORS, Docker containerization, .env support.
 
@@ -99,7 +108,10 @@ flow including the one-session-per-day guard, status validation, in-place editin
 and learner scoping. The examination flow adds 30 tests covering exam CRUD and its
 title conflict, the class-scoping guard, roster shape, mark bounds, atomic bulk
 saves, in-place correction, the per-exam pass threshold, rollup grouping and learner
-scoping.
+scoping. The fee-collection flow adds 15 tests covering structure validation,
+class-scoping of assignment, idempotent re-assignment, the derived
+`Paid`/`Partial`/`Overdue`/`Unpaid` precedence, refused overpayment, the delete
+guards, the learner ledger and the grouped report.
 
 Test classes that build throwaway academic rows (`AT-*` and `EX-*` classes) clean
 them up in `IAsyncLifetime.DisposeAsync` rather than only between their own tests, so they do
@@ -119,7 +131,7 @@ Swagger UI available at `/swagger` when running in Development mode.
 - Assignments, AssignmentSubmissions
 - AttendanceSessions, AttendanceRecords (one session per class/section/date, one mark per student per session)
 - Exams, ExamSubjects (a paper is one subject for one class), Marks (one mark per student per paper)
-- FeeStructures, StudentFees, FeeInvoices, FeePayments
+- FeeStructures, StudentFees (the receivable ledger), Invoices, Payments (each settles a `StudentFees` row)
 - Announcements, Notifications, UserDevices
 - Events, EventParticipants
 - Files, AuditLogs
@@ -138,10 +150,13 @@ Schema changes that cannot be expressed as `CREATE TABLE IF NOT EXISTS` live in
 | `004_merge_duplicate_classes.sql` | Merges the duplicate class rows in the dev database into one row per grade, repoints sections, enrollments, class-subject mappings, fee structures and attendance, and adds `ux_classes_name` / `ux_sections_class_name`. |
 | `005_one_attendance_session_per_day.sql` | Collapses duplicate attendance sessions for the same class, section and date, carrying each duplicate's marks onto the newest session so none are lost, then adds `ux_attendancesessions_day` and `ux_attendancerecords_student`. |
 | `006_scope_exam_subjects_to_class.sql` | Adds non-null `ExamSubjects.ClassId` referencing `Classes` with `ON DELETE RESTRICT`, collapsing any duplicate `(ExamId, SubjectId)` paper onto the newest row first so no marks are lost. Adds `ux_examsubjects_exam_class_subject`, `ux_marks_examsubject_student`, and the `ck_examsubjects_maxmarks` / `ck_marks_nonnegative` / `ck_exams_passingmarks` / `ck_exams_dates` checks. |
+| `007_fees_ledger.sql` | Gives fees a write path: adds `Payments.StudentFeeId` (`ON DELETE CASCADE`), makes `StudentFees.StudentId`/`FeeStructureId` non-null (refusing if orphans exist), drops the stored `StudentFees.Status`, and adds `ux_studentfees_student_structure`, `ux_feestructures_name` and the `ck_payments_target` / `ck_feestructures_amount` / `ck_payments_amountpaid` checks. |
 
 `004` is written to be re-runnable: every step is guarded by an existence check, so
 a partial application can be resumed by running it again. `006` is guarded the same
 way and was verified against the dev database twice with no change on the second run.
+`007` is guarded with the same `pg_constraint` / `IF NOT EXISTS` checks and is safe to
+re-run.
 
 Fresh databases get the equivalent guarantees from `DbInitializer`, which creates
 `ux_enrollments_studentid`, `ux_classes_name`, `ux_sections_class_name`,

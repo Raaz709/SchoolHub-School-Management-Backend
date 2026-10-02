@@ -348,20 +348,28 @@ namespace SchoolHub.API.Data
                 -- ==========================================
                 -- FEES
                 -- ==========================================
+                -- Status is deliberately absent from StudentFees. Paid, outstanding
+                -- and status are derived from Amount and Payments on every read; a
+                -- stored status can only ever disagree with the payments.
                 CREATE TABLE IF NOT EXISTS FeeStructures (
                     Id SERIAL PRIMARY KEY,
                     Name VARCHAR(100) NOT NULL,
-                    Amount DECIMAL(10,2) NOT NULL,
+                    Amount DECIMAL(10,2) NOT NULL CHECK (Amount > 0),
                     ClassId INT REFERENCES Classes(Id) ON DELETE CASCADE
                 );
 
+                CREATE UNIQUE INDEX IF NOT EXISTS ux_feestructures_name
+                    ON FeeStructures (lower(btrim(Name)));
+
                 CREATE TABLE IF NOT EXISTS StudentFees (
                     Id SERIAL PRIMARY KEY,
-                    StudentId INT REFERENCES Students(Id) ON DELETE CASCADE,
-                    FeeStructureId INT REFERENCES FeeStructures(Id) ON DELETE CASCADE,
-                    DueDate DATE NOT NULL,
-                    Status VARCHAR(50) DEFAULT 'Unpaid'
+                    StudentId INT NOT NULL REFERENCES Students(Id) ON DELETE CASCADE,
+                    FeeStructureId INT NOT NULL REFERENCES FeeStructures(Id) ON DELETE CASCADE,
+                    DueDate DATE NOT NULL
                 );
+
+                CREATE UNIQUE INDEX IF NOT EXISTS ux_studentfees_student_structure
+                    ON StudentFees (StudentId, FeeStructureId);
 
                 CREATE TABLE IF NOT EXISTS Invoices (
                     Id SERIAL PRIMARY KEY,
@@ -375,10 +383,12 @@ namespace SchoolHub.API.Data
                 CREATE TABLE IF NOT EXISTS Payments (
                     Id SERIAL PRIMARY KEY,
                     InvoiceId INT REFERENCES Invoices(Id) ON DELETE CASCADE,
-                    AmountPaid DECIMAL(10,2) NOT NULL,
+                    StudentFeeId INT REFERENCES StudentFees(Id) ON DELETE CASCADE,
+                    AmountPaid DECIMAL(10,2) NOT NULL CHECK (AmountPaid > 0),
                     PaymentDate TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                     PaymentMethod VARCHAR(50),
-                    TransactionReference VARCHAR(255)
+                    TransactionReference VARCHAR(255),
+                    CONSTRAINT ck_payments_target CHECK (InvoiceId IS NOT NULL OR StudentFeeId IS NOT NULL)
                 );
 
                 -- ==========================================
