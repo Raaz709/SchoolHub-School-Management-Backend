@@ -61,6 +61,15 @@ public class SqlColumnNamingTests
     [InlineData("studentname", "StudentName")]
     [InlineData("feename", "FeeName")]
     [InlineData("totalstudentsmarked", "TotalStudentsMarked")]
+    [InlineData("attachmenturl", "AttachmentUrl")]
+    [InlineData("filepath", "FilePath")]
+    [InlineData("submittedat", "SubmittedAt")]
+    [InlineData("submissioncount", "SubmissionCount")]
+    [InlineData("mysubmissionid", "MySubmissionId")]
+    [InlineData("mysubmittedat", "MySubmittedAt")]
+    [InlineData("myscore", "MyScore")]
+    [InlineData("myfeedback", "MyFeedback")]
+    [InlineData("myfilepath", "MyFilePath")]
     public void SquashedAliasesRoundTripToTheNameTheClientReads(string foldedAlias, string expected)
     {
         Assert.Equal(expected, SqlColumnNaming.ToPascalCase(foldedAlias));
@@ -103,6 +112,8 @@ public class SqlColumnNamingTests
             "hiredate", "admissiondate", "classname", "sectionname",
             "departmentname", "subjectname", "targetrole", "isread", "maxscore",
             "studentname", "feename", "totalstudentsmarked",
+            "attachmenturl", "filepath", "submittedat", "submissioncount",
+            "mysubmissionid", "mysubmittedat", "myscore", "myfeedback", "myfilepath",
         };
 
         foreach (var column in columns)

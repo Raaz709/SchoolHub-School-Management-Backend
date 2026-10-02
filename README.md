@@ -6,7 +6,7 @@ Production-quality School Management System API built with C# / ASP.NET Core Web
 
 All milestones implemented with full CRUD, authentication, role-based access, and comprehensive feature coverage.
 
-The API is covered by an xUnit integration suite (`SchoolHub.Tests`) that runs the real endpoints against a live PostgreSQL database. Current state: **243 passing tests**.
+The API is covered by an xUnit integration suite (`SchoolHub.Tests`) that runs the real endpoints against a live PostgreSQL database. Current state: **261 passing tests**.
 
 ## Features & Module Coverage
 
@@ -29,6 +29,13 @@ The API is covered by an xUnit integration suite (`SchoolHub.Tests`) that runs t
    - `GET /api/attendance/student/{studentId}` is scoped through `StudentAccess`: staff may read anyone, a Student only themselves, a Parent only a child linked in `studentparents`. Every row carries `ClassName` and `SectionName` so the student and parent views need no second lookup.
 5. **Teacher Features**: My Classes, My Subjects, Attendance history (`/api/teacher-portal/*`).
 6. **Assignment System**: Creation, Attachments, Submissions, Grading & Feedback (`/api/assignments/*`).
+   - **The flow was read-and-create only before this.** `GET` returned every assignment unscoped, nothing could edit or delete one, submissions were write-only, and grading did not exist.
+   - Staff (`Admin` and `Teacher`) set and manage work: `GET /api/assignments`, `GET /api/assignments/{id}`, `POST /api/assignments`, `PUT/DELETE /api/assignments/{id}`. A blank title (`ck_assignments_title`), a missing subject, a missing deadline, a non-positive max score (`ck_assignments_maxscore`) or an unknown subject is a `400`; an unknown id is a `404`.
+   - Ownership is enforced on writes: a Teacher may only edit or delete their own assignment, an Admin any; anyone else who tries gets a `403` rather than a silent no-op.
+   - **A learner only ever sees the work their class actually offers.** `GET /api/assignments` and `GET /api/assignments/{id}` join `ClassSubjects` to the student's class (`Enrollments`), so a Grade 9 learner cannot read a Grade 10 paper even by guessing its id — an out-of-scope id is a `404`, indistinguishable from one that does not exist.
+   - A learner submits a link to their work with `POST /api/assignments/submit`, upserted on `ux_assignmentsubmissions_assignment_student`, so re-submitting replaces their previous row instead of stacking a second. The assignment must belong to a subject their class offers, and `SubmittedAt` is stamped by the database.
+   - `GET /api/assignments/{id}/submissions` lists everyone who submitted (owner teacher or Admin). `PUT /api/assignments/submissions/{submissionId}` returns a score and feedback; a score outside `0..MaxScore` is a `400` (`ck_assignmentsubmissions_score`). The learner's own row carries `MyScore`/`MyFeedback` so the page can show the returned mark without a second call.
+   - A subject referenced by an assignment is still refused by the academic delete guard, so an assignment cannot be orphaned by deleting its subject.
 7. **Examination & Results**: Exam Management, Marks Entry, Automated Percentage & Grading Calculation (`/api/exams/*`).
    - Staff (`Admin` and `Teacher`) create and edit exams, add each paper, load its class roster and mark it. `GET /api/exams`, `GET /api/exams/{id}`, `GET /api/exams/subjects/{examSubjectId}/roster`, `POST /api/exams`, `PUT /api/exams/{id}`, `POST /api/exams/{id}/subjects`, `DELETE /api/exams/{examId}/subjects/{examSubjectId}`, `PUT /api/exams/subjects/{examSubjectId}/marks`.
    - The whole marking flow was unreachable before this. Nothing could insert an `ExamSubjects` row, so the table was permanently empty, and the old marks handler read `MaxMarks` from a row that could not exist.
@@ -128,12 +135,16 @@ the delete guard for a period in use, week ordering, the learner's own-class
 read and its scoping, and admin-only writes. The event flow adds 8 tests covering
 title/date validation, the same-title-same-date duplicate, edit and delete,
 unknown-id 404s, RSVP upsert and list visibility, invalid-status rejection,
-staff-versus-self participant removal, and admin-only event writes.
+staff-versus-self participant removal, and admin-only event writes. The assignment
+flow adds 9 tests covering create/update validation, owner-versus-admin management,
+non-owner refusals, learner write restrictions, the class-subject read scoping and
+its hidden-id 404, submission upsert, rejection of work set for another class, and
+score bounds plus learner-visible feedback.
 
-Test classes that build throwaway academic rows (`AT-*`, `EX-*` and `TT-*` classes) and
-throwaway events (`EV-*`) clean them up in `IAsyncLifetime.DisposeAsync` rather than only
-between their own tests, so they do not change what other tests see when the whole suite
-runs in one pass.
+Test classes that build throwaway academic rows (`AT-*`, `EX-*`, `TT-*` classes and
+`AS-*` subjects, classes and assignments) and throwaway events (`EV-*`) clean them up in
+`IAsyncLifetime.DisposeAsync` rather than only between their own tests, so they do not
+change what other tests see when the whole suite runs in one pass.
 
 ## API Documentation
 
@@ -171,6 +182,7 @@ Schema changes that cannot be expressed as `CREATE TABLE IF NOT EXISTS` live in
 | `007_fees_ledger.sql` | Gives fees a write path: adds `Payments.StudentFeeId` (`ON DELETE CASCADE`), makes `StudentFees.StudentId`/`FeeStructureId` non-null (refusing if orphans exist), drops the stored `StudentFees.Status`, and adds `ux_studentfees_student_structure`, `ux_feestructures_name` and the `ck_payments_target` / `ck_feestructures_amount` / `ck_payments_amountpaid` checks. |
 | `008_timetable.sql` | Gives the timetable a write path: adds the `ck_timeslots_range` and `ck_timetableentries_day` checks, `ux_timetableentries_section_slot` (one subject per section per period per day) and the partial `ux_timetableentries_teacher_slot` (one class per teacher per period per day). |
 | `009_events.sql` | Gives events a lifecycle: adds the `ck_events_title` check, `ux_events_title_date` (one event per title and date) and `ix_events_eventdate`, normalises `EventParticipants.Status` and makes it non-null with the `ck_eventparticipants_status` check. |
+| `010_assignments.sql` | Gives assignments a lifecycle: adds the `ck_assignments_title` and `ck_assignments_maxscore` checks, makes `Assignments.SubjectId` non-null, indexes `SubjectId`/`DueDate`, backfills and makes `AssignmentSubmissions.SubmittedAt` non-null with a `CURRENT_TIMESTAMP` default, and adds `ux_assignmentsubmissions_assignment_student`, `ix_assignmentsubmissions_studentid` and the `ck_assignmentsubmissions_score` check. |
 
 `004` is written to be re-runnable: every step is guarded by an existence check, so
 a partial application can be resumed by running it again. `006` is guarded the same
@@ -178,14 +190,16 @@ way and was verified against the dev database twice with no change on the second
 `007` is guarded with the same `pg_constraint` / `IF NOT EXISTS` checks and is safe to
 re-run. `008` uses the same guards and was verified against the dev database twice
 with no change on the second run. `009` uses the same guards and was likewise
-verified twice with only notices on the second run.
+verified twice with only notices on the second run. `010` uses the same guards and
+was likewise verified twice with only notices on the second run.
 
 Fresh databases get the equivalent guarantees from `DbInitializer`, which creates
 `ux_enrollments_studentid`, `ux_classes_name`, `ux_sections_class_name`,
 `ux_examsubjects_exam_class_subject` and `ux_marks_examsubject_student` alongside
-the tables, plus the `007`/`008`/`009` fee, timetable and event constraints and
-indexes above, and reads `Exams.PassingMarks` as a percentage between 0 and 100.
-Apply the migrations before starting the API against an existing database.
+the tables, plus the `007`/`008`/`009`/`010` fee, timetable, event and assignment
+constraints and indexes above, and reads `Exams.PassingMarks` as a percentage
+between 0 and 100. Apply the migrations before starting the API against an existing
+database.
 
 ## Response Casing
 

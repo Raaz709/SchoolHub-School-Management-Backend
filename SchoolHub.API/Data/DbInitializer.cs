@@ -297,24 +297,33 @@ namespace SchoolHub.API.Data
                 -- ==========================================
                 CREATE TABLE IF NOT EXISTS Assignments (
                     Id SERIAL PRIMARY KEY,
-                    SubjectId INT REFERENCES Subjects(Id) ON DELETE CASCADE,
+                    SubjectId INT NOT NULL REFERENCES Subjects(Id) ON DELETE CASCADE,
                     TeacherId INT REFERENCES Teachers(Id) ON DELETE CASCADE,
-                    Title VARCHAR(255) NOT NULL,
+                    Title VARCHAR(255) NOT NULL CHECK (btrim(Title) <> ''),
                     Description TEXT,
                     DueDate TIMESTAMP WITH TIME ZONE NOT NULL,
-                    MaxScore DECIMAL(5,2),
+                    MaxScore DECIMAL(5,2) CHECK (MaxScore IS NULL OR MaxScore > 0),
                     AttachmentUrl VARCHAR(500)
                 );
 
+                CREATE INDEX IF NOT EXISTS ix_assignments_subjectid ON Assignments (SubjectId);
+                CREATE INDEX IF NOT EXISTS ix_assignments_duedate ON Assignments (DueDate);
+
                 CREATE TABLE IF NOT EXISTS AssignmentSubmissions (
                     Id SERIAL PRIMARY KEY,
-                    AssignmentId INT REFERENCES Assignments(Id) ON DELETE CASCADE,
-                    StudentId INT REFERENCES Students(Id) ON DELETE CASCADE,
+                    AssignmentId INT NOT NULL REFERENCES Assignments(Id) ON DELETE CASCADE,
+                    StudentId INT NOT NULL REFERENCES Students(Id) ON DELETE CASCADE,
                     FilePath VARCHAR(500),
-                    SubmittedAt TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-                    Score DECIMAL(5,2),
+                    SubmittedAt TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    Score DECIMAL(5,2) CHECK (Score IS NULL OR Score >= 0),
                     Feedback TEXT
                 );
+
+                -- One submission per student per assignment; the upsert target.
+                CREATE UNIQUE INDEX IF NOT EXISTS ux_assignmentsubmissions_assignment_student
+                    ON AssignmentSubmissions (AssignmentId, StudentId);
+                CREATE INDEX IF NOT EXISTS ix_assignmentsubmissions_studentid
+                    ON AssignmentSubmissions (StudentId);
 
                 -- ==========================================
                 -- EXAMS
