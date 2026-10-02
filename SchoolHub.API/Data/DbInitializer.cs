@@ -197,6 +197,38 @@ namespace SchoolHub.API.Data
                     DayOfWeek INT NOT NULL
                 );
 
+                -- Mirrors migrations/008_timetable.sql. A period that ends before
+                -- it starts has no length, so a clash check against it can never
+                -- fire and it renders as a negative block on the grid.
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_timeslots_range') THEN
+                        ALTER TABLE TimeSlots
+                            ADD CONSTRAINT ck_timeslots_range CHECK (EndTime > StartTime);
+                    END IF;
+                END $$;
+
+                -- A section sits in one subject per period per day. Two rows for
+                -- the same slot both render stacked, and the second is unreachable.
+                CREATE UNIQUE INDEX IF NOT EXISTS ux_timetableentries_section_slot
+                    ON TimetableEntries (ClassId, SectionId, TimeSlotId, DayOfWeek);
+
+                -- A teacher cannot teach two classes in the same period on the
+                -- same day. Partial because an unassigned entry is nobody's clash.
+                CREATE UNIQUE INDEX IF NOT EXISTS ux_timetableentries_teacher_slot
+                    ON TimetableEntries (TeacherId, TimeSlotId, DayOfWeek)
+                    WHERE TeacherId IS NOT NULL;
+
+                -- Constrain the day to ISO-8601 so the grid cannot silently drop
+                -- a row it has no column for.
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_timetableentries_day') THEN
+                        ALTER TABLE TimetableEntries
+                            ADD CONSTRAINT ck_timetableentries_day CHECK (DayOfWeek BETWEEN 1 AND 7);
+                    END IF;
+                END $$;
+
                 -- ==========================================
                 -- ATTENDANCE
                 -- ==========================================

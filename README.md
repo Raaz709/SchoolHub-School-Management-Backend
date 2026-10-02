@@ -6,7 +6,7 @@ Production-quality School Management System API built with C# / ASP.NET Core Web
 
 All milestones implemented with full CRUD, authentication, role-based access, and comprehensive feature coverage.
 
-The API is covered by an xUnit integration suite (`SchoolHub.Tests`) that runs the real endpoints against a live PostgreSQL database. Current state: **225 passing tests**.
+The API is covered by an xUnit integration suite (`SchoolHub.Tests`) that runs the real endpoints against a live PostgreSQL database. Current state: **235 passing tests**.
 
 ## Features & Module Coverage
 
@@ -51,7 +51,13 @@ The API is covered by an xUnit integration suite (`SchoolHub.Tests`) that runs t
    - Deletes are guarded: a structure with assignments, or an assignment with payments, is refused with a count/amount of what blocks it, because the cascade would otherwise take the money trail with it. Changing a structure's amount is likewise refused once any student owes it.
    - Structure names are unique case-insensitively (`ux_feestructures_name`), amounts must be positive (`ck_feestructures_amount`), and a payment must name a target (`ck_payments_target`) with a positive amount (`ck_payments_amountpaid`).
    - `GET /api/students/{id}/fees` is the learner-scoped ledger, reading the same derived status through `StudentAccess`: staff may read anyone, a Student only themselves, a Parent only a linked child. `GET /api/reports/fee-collection` groups billed/collected/outstanding by that same status.
-9. **Timetable & Schedule**: TimeSlots, TimetableEntries.
+9. **Timetable & Schedule**: TimeSlots and TimetableEntries (`/api/schoolextensions/*`).
+   - **The timetable was unreachable before this.** The only writer needed a `TimeSlotId` that no endpoint could create, so `TimetableEntries` was empty in every database, and the read endpoint demanded a class and section the learner pages had no way to resolve.
+   - Admin manage the bell schedule (`GET/POST /api/schoolextensions/timeslots`, `PUT/DELETE /api/schoolextensions/timeslots/{id}`); every signed-in role may read it. A period must end after it starts and cannot overlap another (`ck_timeslots_range`), refused with 409.
+   - Entry CRUD is Admin-only (`GET/POST /api/schoolextensions/timetable`, `PUT/DELETE /api/schoolextensions/timetable/{id}`). An entry must name a real day (ISO-8601 1–7, `ck_timetableentries_day`), a section of the chosen class, a subject that class actually offers (`ClassSubjects`), and an existing period; anything else is a 400.
+   - Clashes are refused with 409, backed by `ux_timetableentries_section_slot` and `ux_timetableentries_teacher_slot`: a section sits in one subject per period per day, and a teacher teaches one class at a time. Updating an entry excludes itself from both checks, so re-saving is safe.
+   - A period still scheduled into the timetable cannot be deleted — the `ON DELETE CASCADE` would silently wipe its entries — and is refused with the entry count.
+   - Reads are scoped. `GET /api/schoolextensions/timetable?classId=&sectionId=` is for staff; `GET /api/schoolextensions/timetable/mine` resolves a Student's own class, or a Teacher's own lessons, server-side; `GET /api/schoolextensions/timetable/student/{id}` goes through `StudentAccess` (staff anyone, Student self, Parent linked child).
 10. **Announcements & Notifications**: Announcements, Notifications, UserDevices (Mark read, delete, etc.) (`/api/announcements/*`, `/api/schoolextensions/notifications`).
 11. **Events & Calendar**: Events, EventParticipants.
 12. **Portals & Reports**: Student & Parent Portals (multi-child switching), Admin Reports (`/api/portals/*`, `/api/reports/*`). Reports include `students-by-class` and a `fee-collection` summary grouped by derived fee status.
@@ -111,9 +117,13 @@ saves, in-place correction, the per-exam pass threshold, rollup grouping and lea
 scoping. The fee-collection flow adds 15 tests covering structure validation,
 class-scoping of assignment, idempotent re-assignment, the derived
 `Paid`/`Partial`/`Overdue`/`Unpaid` precedence, refused overpayment, the delete
-guards, the learner ledger and the grouped report.
+guards, the learner ledger and the grouped report. The timetable flow adds 10
+tests covering period validation and overlap, entry validation (day, section,
+offered subject, period), the section and teacher clash guards, in-place update,
+the delete guard for a period in use, week ordering, the learner's own-class
+read and its scoping, and admin-only writes.
 
-Test classes that build throwaway academic rows (`AT-*` and `EX-*` classes) clean
+Test classes that build throwaway academic rows (`AT-*`, `EX-*` and `TT-*` classes) clean
 them up in `IAsyncLifetime.DisposeAsync` rather than only between their own tests, so they do
 not change what other tests see when the whole suite runs in one pass.
 
@@ -151,17 +161,20 @@ Schema changes that cannot be expressed as `CREATE TABLE IF NOT EXISTS` live in
 | `005_one_attendance_session_per_day.sql` | Collapses duplicate attendance sessions for the same class, section and date, carrying each duplicate's marks onto the newest session so none are lost, then adds `ux_attendancesessions_day` and `ux_attendancerecords_student`. |
 | `006_scope_exam_subjects_to_class.sql` | Adds non-null `ExamSubjects.ClassId` referencing `Classes` with `ON DELETE RESTRICT`, collapsing any duplicate `(ExamId, SubjectId)` paper onto the newest row first so no marks are lost. Adds `ux_examsubjects_exam_class_subject`, `ux_marks_examsubject_student`, and the `ck_examsubjects_maxmarks` / `ck_marks_nonnegative` / `ck_exams_passingmarks` / `ck_exams_dates` checks. |
 | `007_fees_ledger.sql` | Gives fees a write path: adds `Payments.StudentFeeId` (`ON DELETE CASCADE`), makes `StudentFees.StudentId`/`FeeStructureId` non-null (refusing if orphans exist), drops the stored `StudentFees.Status`, and adds `ux_studentfees_student_structure`, `ux_feestructures_name` and the `ck_payments_target` / `ck_feestructures_amount` / `ck_payments_amountpaid` checks. |
+| `008_timetable.sql` | Gives the timetable a write path: adds the `ck_timeslots_range` and `ck_timetableentries_day` checks, `ux_timetableentries_section_slot` (one subject per section per period per day) and the partial `ux_timetableentries_teacher_slot` (one class per teacher per period per day). |
 
 `004` is written to be re-runnable: every step is guarded by an existence check, so
 a partial application can be resumed by running it again. `006` is guarded the same
 way and was verified against the dev database twice with no change on the second run.
 `007` is guarded with the same `pg_constraint` / `IF NOT EXISTS` checks and is safe to
-re-run.
+re-run. `008` uses the same guards and was verified against the dev database twice
+with no change on the second run.
 
 Fresh databases get the equivalent guarantees from `DbInitializer`, which creates
 `ux_enrollments_studentid`, `ux_classes_name`, `ux_sections_class_name`,
 `ux_examsubjects_exam_class_subject` and `ux_marks_examsubject_student` alongside
-the tables, and reads `Exams.PassingMarks` as a percentage between 0 and 100.
+the tables, plus the `007`/`008` fee and timetable constraints and indexes above,
+and reads `Exams.PassingMarks` as a percentage between 0 and 100.
 Apply the migrations before starting the API against an existing database.
 
 ## Response Casing

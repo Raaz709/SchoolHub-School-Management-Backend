@@ -2,7 +2,9 @@ using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Npgsql;
+using SchoolHub.API.Security;
 using System.Data;
+using System.Globalization;
 using System.Security.Claims;
 
 namespace SchoolHub.API.Controllers
@@ -40,20 +42,175 @@ namespace SchoolHub.API.Controllers
             return Ok(new { Message = "Academic year created successfully", Id = id });
         }
 
+        // --- TIME SLOTS (the bell schedule the timetable slots into) ---
+        [HttpGet("timeslots")]
+        public async Task<IActionResult> GetTimeSlots()
+        {
+            using var db = Connection;
+            var rows = await db.QueryAsync(
+                "SELECT Id, StartTime, EndTime, Label FROM TimeSlots ORDER BY StartTime, Id");
+            return Ok(rows);
+        }
+
+        [HttpPost("timeslots")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> CreateTimeSlot([FromBody] TimeSlotDto dto)
+        {
+            using var db = Connection;
+            var error = TryReadSlot(dto, out var start, out var end, out var label);
+            if (error != null) return BadRequest(new { Message = error });
+
+            if (await SlotOverlapsAsync(db, start, end, null))
+                return Conflict(new { Message = "This period overlaps an existing one." });
+
+            var id = await db.ExecuteScalarAsync<int>(
+                "INSERT INTO TimeSlots (StartTime, EndTime, Label) VALUES (@Start::time, @End::time, @Label) RETURNING Id",
+                new { Start = start.ToString("HH:mm:ss"), End = end.ToString("HH:mm:ss"), Label = label });
+            return Ok(new { Message = "Period created successfully", TimeSlotId = id });
+        }
+
+        [HttpPut("timeslots/{id}")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> UpdateTimeSlot(int id, [FromBody] TimeSlotDto dto)
+        {
+            using var db = Connection;
+            var exists = await db.ExecuteScalarAsync<int?>(
+                "SELECT Id FROM TimeSlots WHERE Id = @Id", new { Id = id });
+            if (!exists.HasValue) return NotFound(new { Message = "Period not found." });
+
+            var error = TryReadSlot(dto, out var start, out var end, out var label);
+            if (error != null) return BadRequest(new { Message = error });
+
+            if (await SlotOverlapsAsync(db, start, end, id))
+                return Conflict(new { Message = "This period overlaps an existing one." });
+
+            await db.ExecuteAsync(
+                "UPDATE TimeSlots SET StartTime = @Start::time, EndTime = @End::time, Label = @Label WHERE Id = @Id",
+                new { Id = id, Start = start.ToString("HH:mm:ss"), End = end.ToString("HH:mm:ss"), Label = label });
+            return Ok(new { Message = "Period updated successfully" });
+        }
+
+        [HttpDelete("timeslots/{id}")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> DeleteTimeSlot(int id)
+        {
+            using var db = Connection;
+            var exists = await db.ExecuteScalarAsync<int?>(
+                "SELECT Id FROM TimeSlots WHERE Id = @Id", new { Id = id });
+            if (!exists.HasValue) return NotFound(new { Message = "Period not found." });
+
+            // The FK cascades, so deleting a period would silently wipe the rows
+            // scheduled into it. Refuse and let the admin move them first.
+            var used = await db.ExecuteScalarAsync<int>(
+                "SELECT COUNT(*) FROM TimetableEntries WHERE TimeSlotId = @Id", new { Id = id });
+            if (used > 0)
+                return Conflict(new
+                {
+                    Message = $"This period is used by {used} timetable " +
+                              $"entr{(used == 1 ? "y" : "ies")}. Move or remove them first.",
+                });
+
+            await db.ExecuteAsync("DELETE FROM TimeSlots WHERE Id = @Id", new { Id = id });
+            return Ok(new { Message = "Period deleted successfully" });
+        }
+
         // --- TIMETABLE ---
+        // One projection shared by every read, so the admin grid, a learner's own
+        // week and the clash checks all agree on what an entry is.
+        private const string TimetableSelect = @"
+            SELECT t.Id, t.ClassId, c.Name AS ClassName,
+                   t.SectionId, sec.Name AS SectionName,
+                   t.SubjectId, sub.Name AS SubjectName,
+                   t.TeacherId, u.Username AS TeacherName,
+                   t.TimeSlotId, ts.StartTime, ts.EndTime, ts.Label AS SlotLabel,
+                   t.DayOfWeek
+            FROM TimetableEntries t
+            JOIN Classes c ON c.Id = t.ClassId
+            JOIN Sections sec ON sec.Id = t.SectionId
+            JOIN Subjects sub ON sub.Id = t.SubjectId
+            JOIN TimeSlots ts ON ts.Id = t.TimeSlotId
+            LEFT JOIN Teachers th ON th.Id = t.TeacherId
+            LEFT JOIN Users u ON u.Id = th.UserId";
+
         [HttpGet("timetable")]
         public async Task<IActionResult> GetTimetable([FromQuery] int classId, [FromQuery] int sectionId)
         {
+            if (classId <= 0 || sectionId <= 0)
+                return BadRequest(new { Message = "A class and section are required." });
+
             using var db = Connection;
-            var sql = @"
-                SELECT t.Id, t.DayOfWeek, ts.StartTime, ts.EndTime, sub.Name as SubjectName, u.Username as TeacherName
-                FROM TimetableEntries t
-                JOIN TimeSlots ts ON t.TimeSlotId = ts.Id
-                JOIN Subjects sub ON t.SubjectId = sub.Id
-                LEFT JOIN Teachers th ON t.TeacherId = th.Id
-                LEFT JOIN Users u ON th.UserId = u.Id
-                WHERE t.ClassId = @ClassId AND t.SectionId = @SectionId";
-            return Ok(await db.QueryAsync(sql, new { ClassId = classId, SectionId = sectionId }));
+
+            // Section ids are unique across classes, but a section picked for the
+            // wrong class would silently show another class's week.
+            var belongs = await db.ExecuteScalarAsync<int?>(
+                "SELECT Id FROM Sections WHERE Id = @SectionId AND ClassId = @ClassId",
+                new { SectionId = sectionId, ClassId = classId });
+            if (!belongs.HasValue)
+                return BadRequest(new { Message = "That section does not belong to the selected class." });
+
+            var rows = await db.QueryAsync(
+                TimetableSelect +
+                " WHERE t.ClassId = @ClassId AND t.SectionId = @SectionId" +
+                " ORDER BY t.DayOfWeek, ts.StartTime",
+                new { ClassId = classId, SectionId = sectionId });
+            return Ok(rows);
+        }
+
+        /// <summary>
+        /// The caller's own week. A Student sees their class's timetable and a
+        /// Teacher everything they are scheduled to teach; the class is resolved
+        /// server-side, so a learner cannot ask for another section's.
+        /// </summary>
+        [HttpGet("timetable/mine")]
+        public async Task<IActionResult> GetMyTimetable()
+        {
+            using var db = Connection;
+            var userId = StudentAccess.CallerUserId(User);
+
+            if (User.IsInRole("Teacher"))
+            {
+                var teacherId = await db.ExecuteScalarAsync<int?>(
+                    "SELECT Id FROM Teachers WHERE UserId = @UserId", new { UserId = userId });
+                if (!teacherId.HasValue)
+                    return NotFound(new { Message = "This account is not linked to a teacher record." });
+
+                var taught = await db.QueryAsync(
+                    TimetableSelect +
+                    " WHERE t.TeacherId = @TeacherId ORDER BY t.DayOfWeek, ts.StartTime",
+                    new { TeacherId = teacherId.Value });
+                return Ok(taught);
+            }
+
+            var studentId = await db.ExecuteScalarAsync<int?>(
+                "SELECT Id FROM Students WHERE UserId = @UserId", new { UserId = userId });
+            if (!studentId.HasValue)
+                return NotFound(new { Message = "This account is not linked to a student record." });
+
+            return Ok(await QueryStudentTimetableAsync(db, studentId.Value));
+        }
+
+        /// <summary>
+        /// One student's week. Admin and Teacher may read any student; a Student
+        /// only their own and a Parent only a linked child, so changing the id in
+        /// the URL is not enough to read another learner's schedule.
+        /// </summary>
+        [HttpGet("timetable/student/{studentId}")]
+        public async Task<IActionResult> GetStudentTimetable(int studentId)
+        {
+            using var db = Connection;
+            if (!await StudentAccess.CanReadStudentAsync(db, User, studentId)) return Forbid();
+            return Ok(await QueryStudentTimetableAsync(db, studentId));
+        }
+
+        private static async Task<IEnumerable<dynamic>> QueryStudentTimetableAsync(
+            IDbConnection db, int studentId)
+        {
+            return await db.QueryAsync(
+                TimetableSelect + @"
+                JOIN Enrollments e ON e.ClassId = t.ClassId AND e.SectionId = t.SectionId
+                WHERE e.StudentId = @StudentId
+                ORDER BY t.DayOfWeek, ts.StartTime",
+                new { StudentId = studentId });
         }
 
         [HttpPost("timetable")]
@@ -61,12 +218,156 @@ namespace SchoolHub.API.Controllers
         public async Task<IActionResult> CreateTimetableEntry([FromBody] CreateTimetableDto dto)
         {
             using var db = Connection;
-            var sql = @"
-                INSERT INTO TimetableEntries (ClassId, SectionId, SubjectId, TeacherId, TimeSlotId, DayOfWeek) 
-                VALUES (@ClassId, @SectionId, @SubjectId, @TeacherId, @TimeSlotId, @DayOfWeek) 
-                RETURNING Id;";
-            var id = await db.ExecuteScalarAsync<int>(sql, dto);
+            var (error, status) = await ValidateEntryAsync(db, dto, null);
+            if (error != null) return StatusCode(status, new { Message = error });
+
+            var id = await db.ExecuteScalarAsync<int>(
+                @"INSERT INTO TimetableEntries (ClassId, SectionId, SubjectId, TeacherId, TimeSlotId, DayOfWeek)
+                  VALUES (@ClassId, @SectionId, @SubjectId, @TeacherId, @TimeSlotId, @DayOfWeek)
+                  RETURNING Id",
+                EntryParams(dto));
             return Ok(new { Message = "Timetable entry created successfully", Id = id });
+        }
+
+        [HttpPut("timetable/{id}")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> UpdateTimetableEntry(int id, [FromBody] CreateTimetableDto dto)
+        {
+            using var db = Connection;
+            var exists = await db.ExecuteScalarAsync<int?>(
+                "SELECT Id FROM TimetableEntries WHERE Id = @Id", new { Id = id });
+            if (!exists.HasValue) return NotFound(new { Message = "Timetable entry not found." });
+
+            // Exclude this row from both clash checks, so re-saving an unchanged
+            // entry does not collide with itself.
+            var (error, status) = await ValidateEntryAsync(db, dto, id);
+            if (error != null) return StatusCode(status, new { Message = error });
+
+            await db.ExecuteAsync(
+                @"UPDATE TimetableEntries
+                  SET ClassId = @ClassId, SectionId = @SectionId, SubjectId = @SubjectId,
+                      TeacherId = @TeacherId, TimeSlotId = @TimeSlotId, DayOfWeek = @DayOfWeek
+                  WHERE Id = @Id",
+                new
+                {
+                    Id = id,
+                    dto.ClassId,
+                    dto.SectionId,
+                    dto.SubjectId,
+                    TeacherId = dto.TeacherId > 0 ? dto.TeacherId : (int?)null,
+                    dto.TimeSlotId,
+                    dto.DayOfWeek,
+                });
+            return Ok(new { Message = "Timetable entry updated successfully" });
+        }
+
+        [HttpDelete("timetable/{id}")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> DeleteTimetableEntry(int id)
+        {
+            using var db = Connection;
+            var affected = await db.ExecuteAsync(
+                "DELETE FROM TimetableEntries WHERE Id = @Id", new { Id = id });
+            if (affected == 0) return NotFound(new { Message = "Timetable entry not found." });
+            return Ok(new { Message = "Timetable entry deleted successfully" });
+        }
+
+        /// <summary>Normalises the optional teacher to a nullable id for the SQL.</summary>
+        private static object EntryParams(CreateTimetableDto dto) => new
+        {
+            dto.ClassId,
+            dto.SectionId,
+            dto.SubjectId,
+            TeacherId = dto.TeacherId > 0 ? dto.TeacherId : (int?)null,
+            dto.TimeSlotId,
+            dto.DayOfWeek,
+        };
+
+        /// <summary>
+        /// Validates an entry and returns the failure message with the status it
+        /// deserves: 400 for bad input, 409 for a clash with an existing entry.
+        /// </summary>
+        private static async Task<(string? Error, int Status)> ValidateEntryAsync(
+            IDbConnection db, CreateTimetableDto dto, int? excludeId)
+        {
+            if (dto.DayOfWeek < 1 || dto.DayOfWeek > 7)
+                return ("Day of week must be between 1 (Monday) and 7 (Sunday).", 400);
+
+            var sectionBelongs = await db.ExecuteScalarAsync<int?>(
+                "SELECT Id FROM Sections WHERE Id = @SectionId AND ClassId = @ClassId",
+                new { dto.SectionId, dto.ClassId });
+            if (!sectionBelongs.HasValue)
+                return ("The section does not belong to the selected class.", 400);
+
+            var subjectInClass = await db.ExecuteScalarAsync<int?>(
+                "SELECT SubjectId FROM ClassSubjects WHERE ClassId = @ClassId AND SubjectId = @SubjectId",
+                new { dto.ClassId, dto.SubjectId });
+            if (!subjectInClass.HasValue)
+                return ("That subject is not offered in the selected class.", 400);
+
+            var slotExists = await db.ExecuteScalarAsync<int?>(
+                "SELECT Id FROM TimeSlots WHERE Id = @TimeSlotId", new { dto.TimeSlotId });
+            if (!slotExists.HasValue)
+                return ("The selected period does not exist.", 400);
+
+            if (dto.TeacherId > 0)
+            {
+                var teacherExists = await db.ExecuteScalarAsync<int?>(
+                    "SELECT Id FROM Teachers WHERE Id = @TeacherId", new { dto.TeacherId });
+                if (!teacherExists.HasValue)
+                    return ("The selected teacher does not exist.", 400);
+            }
+
+            var sectionClash = await db.ExecuteScalarAsync<int>(
+                @"SELECT COUNT(*) FROM TimetableEntries
+                  WHERE ClassId = @ClassId AND SectionId = @SectionId AND TimeSlotId = @TimeSlotId
+                    AND DayOfWeek = @DayOfWeek AND Id <> @ExcludeId",
+                new { dto.ClassId, dto.SectionId, dto.TimeSlotId, dto.DayOfWeek, ExcludeId = excludeId ?? 0 });
+            if (sectionClash > 0)
+                return ("This section already has a subject in that period.", 409);
+
+            if (dto.TeacherId > 0)
+            {
+                var teacherClash = await db.ExecuteScalarAsync<int>(
+                    @"SELECT COUNT(*) FROM TimetableEntries
+                      WHERE TeacherId = @TeacherId AND TimeSlotId = @TimeSlotId AND DayOfWeek = @DayOfWeek
+                        AND Id <> @ExcludeId",
+                    new { dto.TeacherId, dto.TimeSlotId, dto.DayOfWeek, ExcludeId = excludeId ?? 0 });
+                if (teacherClash > 0)
+                    return ("This teacher is already scheduled in that period.", 409);
+            }
+
+            return (null, 200);
+        }
+
+        /// <summary>
+        /// Reads a period's times, rejecting anything that is not a real time or
+        /// that ends before it starts. Returns a message, or null when valid.
+        /// </summary>
+        private static string? TryReadSlot(
+            TimeSlotDto dto, out TimeOnly start, out TimeOnly end, out string? label)
+        {
+            label = string.IsNullOrWhiteSpace(dto.Label) ? null : dto.Label.Trim();
+
+            if (!TimeOnly.TryParse(dto.StartTime, CultureInfo.InvariantCulture, out start))
+            {
+                end = default;
+                return "Start time is required (HH:mm).";
+            }
+            if (!TimeOnly.TryParse(dto.EndTime, CultureInfo.InvariantCulture, out end))
+                return "End time is required (HH:mm).";
+            if (start >= end)
+                return "The period must end after it starts.";
+            return null;
+        }
+
+        private static async Task<bool> SlotOverlapsAsync(
+            IDbConnection db, TimeOnly start, TimeOnly end, int? excludeId)
+        {
+            var count = await db.ExecuteScalarAsync<int>(
+                "SELECT COUNT(*) FROM TimeSlots WHERE StartTime < @End::time AND EndTime > @Start::time AND Id <> @ExcludeId",
+                new { Start = start.ToString("HH:mm:ss"), End = end.ToString("HH:mm:ss"), ExcludeId = excludeId ?? 0 });
+            return count > 0;
         }
 
         // --- EVENTS ---
@@ -242,6 +543,18 @@ namespace SchoolHub.API.Controllers
         public int TeacherId { get; set; }
         public int TimeSlotId { get; set; }
         public int DayOfWeek { get; set; }
+    }
+
+    /// <summary>
+    /// A bell-schedule period. Times are strings so the API rejects malformed
+    /// input with a message rather than a model-binding 400, and accepts the
+    /// `HH:mm` an `&lt;input type="time"&gt;` sends.
+    /// </summary>
+    public class TimeSlotDto
+    {
+        public string StartTime { get; set; } = string.Empty;
+        public string EndTime { get; set; } = string.Empty;
+        public string? Label { get; set; }
     }
 
     public class CreateEventDto
