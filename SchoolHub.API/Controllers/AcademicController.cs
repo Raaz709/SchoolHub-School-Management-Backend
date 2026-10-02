@@ -102,6 +102,20 @@ namespace SchoolHub.API.Controllers
             var subjectLinks = await db.ExecuteScalarAsync<int>(
                 "SELECT count(*) FROM ClassSubjects WHERE ClassId = @Id", new { Id = id });
 
+            // ExamSubjects.ClassId is ON DELETE RESTRICT, and letting the database
+            // decide would answer with a bare foreign key error. The marks under
+            // those papers are results, so they are not removed as a side effect
+            // of tidying up a class.
+            var examSubjects = await db.ExecuteScalarAsync<int>(
+                "SELECT count(*) FROM ExamSubjects WHERE ClassId = @Id", new { Id = id });
+            if (examSubjects > 0)
+            {
+                return Conflict(new
+                {
+                    Message = $"\"{name}\" has {examSubjects} exam subject(s). Remove them from the exam first.",
+                });
+            }
+
             await db.ExecuteAsync("DELETE FROM Classes WHERE Id = @Id", new { Id = id });
             return Ok(new { Message = $"\"{name}\" deleted. {subjectLinks} subject link(s) removed." });
         }

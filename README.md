@@ -30,6 +30,17 @@ The API is covered by an xUnit integration suite (`SchoolHub.Tests`) that runs t
 5. **Teacher Features**: My Classes, My Subjects, Attendance history (`/api/teacher-portal/*`).
 6. **Assignment System**: Creation, Attachments, Submissions, Grading & Feedback (`/api/assignments/*`).
 7. **Examination & Results**: Exam Management, Marks Entry, Automated Percentage & Grading Calculation (`/api/exams/*`).
+   - Staff (`Admin` and `Teacher`) create and edit exams, add each paper, load its class roster and mark it. `GET /api/exams`, `GET /api/exams/{id}`, `GET /api/exams/subjects/{examSubjectId}/roster`, `POST /api/exams`, `PUT /api/exams/{id}`, `POST /api/exams/{id}/subjects`, `DELETE /api/exams/{examId}/subjects/{examSubjectId}`, `PUT /api/exams/subjects/{examSubjectId}/marks`.
+   - The whole marking flow was unreachable before this. Nothing could insert an `ExamSubjects` row, so the table was permanently empty, and the old marks handler read `MaxMarks` from a row that could not exist.
+   - **A paper is one subject for one class, scoped by `ExamSubjects.ClassId`.** An exam may span several classes, which is why the link lives on the paper rather than the exam. Without it a Grade 5 mark could be filed against a Grade 11 paper. A class referenced by a paper cannot be deleted.
+   - **A paper's whole roster saves in one transaction.** The old handler took one student per call, so marking a class of thirty meant thirty saves and a teacher who stopped halfway left a paper that looked finished. Marks are upserted on `ux_marks_examsubject_student`, so a re-save corrects in place rather than duplicating a row, and `ux_examsubjects_exam_class_subject` stops the same paper being added twice. Every save writes a `SAVE_MARKS` audit entry.
+   - A mark must be inside `0..MaxMarks` and belong to the paper's own class; a stray id or an out-of-range value is a `400` naming the offending students, and nothing is written. The same student listed twice is also refused rather than saved twice with the last one silently winning.
+   - Grades use fixed bands (`A+` 90, `A` 80, `B` 70, `C` 60, `F`), and `Exams.PassingMarks` is read as a **pass percentage**, not an absolute mark. The column defaulted to 40 and was previously never read at all.
+   - Exam titles are unique per academic year, compared case-insensitively and by `AcademicYearId` rather than name — the seed data holds two years both named `2024-2025`, so a name comparison would collide them. Duplicate titles return `409`.
+   - Deletes are guarded: an exam holding papers, or a paper holding marks, is refused with a count of what blocks it, because marks cascade from the paper and a blanket delete would quietly discard results. Only `Admin` may delete an exam.
+   - `GET /api/exams` and `GET /api/exams/{id}` allow `Admin`, `Teacher` and `Student` but exclude `Parent`, matching the nav matrix: a parent sees their child's results and nothing else. Every row carries `ClassCount`, `SubjectCount` and `MarkCount`, because an exam with no papers is the state a new exam starts in and the list gave no way to tell that from a finished one. The list's mark count also had to move off `sum(... IS NOT NULL)`: PostgreSQL has no `sum(boolean)`, so it threw a `500` for every caller.
+   - `GET /api/exams/mine` returns the signed-in student's own transcript without the page needing to know its `Students.Id`, which no other endpoint exposed. `GET /api/exams/student/{studentId}` is scoped through `StudentAccess`: staff may read anyone, a Student only themselves, a Parent only a child linked in `studentparents`.
+   - Transcripts are rolled up server-side into one row per exam with `PassedCount`, `TotalObtained`, `TotalMax`, `OverallPercentage` and `Passed`. Each exam's own pass percentage is read per exam, so exams with different thresholds are not judged by one shared line. The legacy `GET /api/students/{id}/results` returned no exam id, date or class, so a transcript could not be grouped or ordered.
 8. **Fee Management**: Fee Structures, Student Fees, Invoices, Payments (`/api/fees/*`).
 9. **Timetable & Schedule**: TimeSlots, TimetableEntries.
 10. **Announcements & Notifications**: Announcements, Notifications, UserDevices (Mark read, delete, etc.) (`/api/announcements/*`, `/api/schoolextensions/notifications`).
@@ -85,10 +96,13 @@ Current coverage: authorization matrix for every role and endpoint, error mappin
 SQL column-name normalisation, student management and scoping, academic CRUD
 including the delete guards and class-subject mapping, and the attendance marking
 flow including the one-session-per-day guard, status validation, in-place editing
-and learner scoping.
+and learner scoping. The examination flow adds 30 tests covering exam CRUD and its
+title conflict, the class-scoping guard, roster shape, mark bounds, atomic bulk
+saves, in-place correction, the per-exam pass threshold, rollup grouping and learner
+scoping.
 
-Test classes that build throwaway academic rows (`AT-*` classes) clean them up in
-`IAsyncLifetime.DisposeAsync` rather than only between their own tests, so they do
+Test classes that build throwaway academic rows (`AT-*` and `EX-*` classes) clean
+them up in `IAsyncLifetime.DisposeAsync` rather than only between their own tests, so they do
 not change what other tests see when the whole suite runs in one pass.
 
 ## API Documentation
@@ -104,7 +118,7 @@ Swagger UI available at `/swagger` when running in Development mode.
 - TeacherSubjects, TimeSlots, TimetableEntries
 - Assignments, AssignmentSubmissions
 - AttendanceSessions, AttendanceRecords (one session per class/section/date, one mark per student per session)
-- Exams, ExamMarks
+- Exams, ExamSubjects (a paper is one subject for one class), Marks (one mark per student per paper)
 - FeeStructures, StudentFees, FeeInvoices, FeePayments
 - Announcements, Notifications, UserDevices
 - Events, EventParticipants
@@ -123,14 +137,17 @@ Schema changes that cannot be expressed as `CREATE TABLE IF NOT EXISTS` live in
 | `003_enrollment_one_per_student.sql` | Adds `ux_enrollments_studentid`: a student belongs to exactly one class. |
 | `004_merge_duplicate_classes.sql` | Merges the duplicate class rows in the dev database into one row per grade, repoints sections, enrollments, class-subject mappings, fee structures and attendance, and adds `ux_classes_name` / `ux_sections_class_name`. |
 | `005_one_attendance_session_per_day.sql` | Collapses duplicate attendance sessions for the same class, section and date, carrying each duplicate's marks onto the newest session so none are lost, then adds `ux_attendancesessions_day` and `ux_attendancerecords_student`. |
+| `006_scope_exam_subjects_to_class.sql` | Adds non-null `ExamSubjects.ClassId` referencing `Classes` with `ON DELETE RESTRICT`, collapsing any duplicate `(ExamId, SubjectId)` paper onto the newest row first so no marks are lost. Adds `ux_examsubjects_exam_class_subject`, `ux_marks_examsubject_student`, and the `ck_examsubjects_maxmarks` / `ck_marks_nonnegative` / `ck_exams_passingmarks` / `ck_exams_dates` checks. |
 
 `004` is written to be re-runnable: every step is guarded by an existence check, so
-a partial application can be resumed by running it again.
+a partial application can be resumed by running it again. `006` is guarded the same
+way and was verified against the dev database twice with no change on the second run.
 
 Fresh databases get the equivalent guarantees from `DbInitializer`, which creates
-`ux_enrollments_studentid`, `ux_classes_name` and `ux_sections_class_name` alongside
-the tables. Apply the migrations before starting the API against an existing
-database.
+`ux_enrollments_studentid`, `ux_classes_name`, `ux_sections_class_name`,
+`ux_examsubjects_exam_class_subject` and `ux_marks_examsubject_student` alongside
+the tables, and reads `Exams.PassingMarks` as a percentage between 0 and 100.
+Apply the migrations before starting the API against an existing database.
 
 ## Response Casing
 
@@ -145,3 +162,18 @@ unrecoverable and each one is listed explicitly in `KnownColumns`
 (`SchoolHub.API/Serialization/SqlColumnNaming.cs`). **Adding a multi-word alias to a
 `QueryAsync` without a type argument means adding it to that dictionary too**, or the
 client will receive a mis-cased key.
+
+This applies to `AS` aliases as well as real columns, and the failure is silent in a
+particular way. An alias written `u.Username as StudentName` reaches the policy as
+`studentname`, and with no entry it falls through to the naive capitalisation and is
+emitted as `Studentname` — a different key from the one the client reads, so the field
+arrives as *missing* rather than as wrong. Three such aliases shipped that way
+(`studentname`, `feename`, `totalstudentsmarked`); the parent child pickers on the
+student and parent dashboards, the attendance page and the examinations page were all
+rendering a blank name. Note that a plain "is it PascalCase" check passes for
+`Studentname`, so `SqlColumnNamingTests` pins these names explicitly and also asserts
+that the naive result is *not* returned.
+
+A typed projection is unaffected: returning an anonymous object or a typed row emits
+its own C# property names, so only rows handed straight to `Ok()` as a dynamic
+`QueryAsync` result depend on the dictionary.

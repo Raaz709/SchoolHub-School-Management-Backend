@@ -303,12 +303,18 @@ namespace SchoolHub.API.Data
                     PassingMarks DECIMAL(5,2) DEFAULT 40.00
                 );
 
+                -- ClassId is on the subject, not the exam, so one exam can span
+                -- classes. ON DELETE RESTRICT rather than CASCADE: a deleted
+                -- class must not take its exam subjects and every mark under
+                -- them with it, because marks are results.
                 CREATE TABLE IF NOT EXISTS ExamSubjects (
                     Id SERIAL PRIMARY KEY,
                     ExamId INT REFERENCES Exams(Id) ON DELETE CASCADE,
+                    ClassId INT NOT NULL REFERENCES Classes(Id) ON DELETE RESTRICT,
                     SubjectId INT REFERENCES Subjects(Id) ON DELETE CASCADE,
                     MaxMarks DECIMAL(5,2) NOT NULL,
-                    ExamDate TIMESTAMP WITH TIME ZONE
+                    ExamDate TIMESTAMP WITH TIME ZONE,
+                    CONSTRAINT ck_examsubjects_maxmarks CHECK (MaxMarks > 0)
                 );
 
                 CREATE TABLE IF NOT EXISTS Marks (
@@ -317,8 +323,27 @@ namespace SchoolHub.API.Data
                     StudentId INT REFERENCES Students(Id) ON DELETE CASCADE,
                     MarksObtained DECIMAL(5,2) NOT NULL,
                     Grade VARCHAR(10),
-                    Remarks TEXT
+                    Remarks TEXT,
+                    CONSTRAINT ck_marks_nonnegative CHECK (MarksObtained >= 0)
                 );
+
+                -- One paper per subject per class per exam, and one mark per
+                -- student per paper. The bulk save upserts in place, which needs
+                -- the second. Same fixes as
+                -- migrations/006_scope_exam_subjects_to_class.sql.
+                CREATE UNIQUE INDEX IF NOT EXISTS ux_examsubjects_exam_class_subject
+                    ON ExamSubjects (ExamId, ClassId, SubjectId);
+                CREATE UNIQUE INDEX IF NOT EXISTS ux_marks_examsubject_student
+                    ON Marks (ExamSubjectId, StudentId);
+
+                -- PassingMarks is read as a percentage threshold for pass/fail.
+                -- An exam window that ends before it starts is always empty.
+                ALTER TABLE Exams DROP CONSTRAINT IF EXISTS ck_exams_passingmarks;
+                ALTER TABLE Exams ADD CONSTRAINT ck_exams_passingmarks
+                    CHECK (PassingMarks IS NULL OR (PassingMarks >= 0 AND PassingMarks <= 100));
+                ALTER TABLE Exams DROP CONSTRAINT IF EXISTS ck_exams_dates;
+                ALTER TABLE Exams ADD CONSTRAINT ck_exams_dates
+                    CHECK (EndDate IS NULL OR StartDate IS NULL OR EndDate >= StartDate);
 
                 -- ==========================================
                 -- FEES

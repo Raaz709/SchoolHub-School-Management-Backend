@@ -35,13 +35,23 @@ public static class SqlColumnNaming
     /// <summary>
     /// Lower-case column names whose correct PascalCase form is not derivable
     /// by simply capitalising the first letter.
+    ///
+    /// This includes every <c>AS</c> alias in the controller SQL, not only real
+    /// columns. An alias is written PascalCase in the query, PostgreSQL folds the
+    /// unquoted identifier to lower case, and so <c>u.Username as StudentName</c>
+    /// arrives here as <c>studentname</c>. With no entry it fell through to the
+    /// naive capitalisation and was emitted as <c>Studentname</c> — a different
+    /// key from the one the client reads, so the field arrived as missing rather
+    /// than as wrong. Add a squashed alias here when it is introduced.
     /// </summary>
     private static readonly Dictionary<string, string> KnownColumns =
         new(StringComparer.OrdinalIgnoreCase)
         {
             ["academicyearid"] = "AcademicYearId",
+            ["academicyearname"] = "AcademicYearName",
             ["admissiondate"] = "AdmissionDate",
             ["classid"] = "ClassId",
+            ["classcount"] = "ClassCount",
             ["classname"] = "ClassName",
             ["createdat"] = "CreatedAt",
             ["departmentid"] = "DepartmentId",
@@ -50,11 +60,20 @@ public static class SqlColumnNaming
             ["employeecode"] = "EmployeeCode",
             ["enddate"] = "EndDate",
             ["eventdate"] = "EventDate",
+            ["examdate"] = "ExamDate",
+            ["examid"] = "ExamId",
+            ["examsubjectid"] = "ExamSubjectId",
+            ["examtitle"] = "ExamTitle",
+            ["feename"] = "FeeName",
             ["hiredate"] = "HireDate",
             ["ipaddress"] = "IpAddress",
             ["isactive"] = "IsActive",
             ["iscurrent"] = "IsCurrent",
             ["isread"] = "IsRead",
+            ["markcount"] = "MarkCount",
+            ["markid"] = "MarkId",
+            ["marksobtained"] = "MarksObtained",
+            ["maxmarks"] = "MaxMarks",
             ["maxscore"] = "MaxScore",
             ["parentid"] = "ParentId",
             ["passingmarks"] = "PassingMarks",
@@ -65,6 +84,9 @@ public static class SqlColumnNaming
             ["startdate"] = "StartDate",
             ["studentcount"] = "StudentCount",
             ["studentid"] = "StudentId",
+            ["studentname"] = "StudentName",
+            ["subjectcode"] = "SubjectCode",
+            ["subjectcount"] = "SubjectCount",
             ["subjectid"] = "SubjectId",
             ["subjectname"] = "SubjectName",
             ["targetrole"] = "TargetRole",
@@ -73,6 +95,7 @@ public static class SqlColumnNaming
             ["sectioncount"] = "SectionCount",
             ["sessionid"] = "SessionId",
             ["totalamount"] = "TotalAmount",
+            ["totalstudentsmarked"] = "TotalStudentsMarked",
             ["updatedat"] = "UpdatedAt",
             ["userid"] = "UserId",
         };

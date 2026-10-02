@@ -53,6 +53,19 @@ public class SqlColumnNamingTests
         Assert.Equal(expected, SqlColumnNaming.ToPascalCase(input));
     }
 
+    [Theory]
+    // Every one of these is written PascalCase as an `AS` alias in a controller
+    // query, so it reaches the policy already folded to lower case. Each was
+    // emitted as a naive capitalisation ("Studentname") and silently arrived at
+    // the client as a missing field, so each is pinned to its real name.
+    [InlineData("studentname", "StudentName")]
+    [InlineData("feename", "FeeName")]
+    [InlineData("totalstudentsmarked", "TotalStudentsMarked")]
+    public void SquashedAliasesRoundTripToTheNameTheClientReads(string foldedAlias, string expected)
+    {
+        Assert.Equal(expected, SqlColumnNaming.ToPascalCase(foldedAlias));
+    }
+
     [Fact]
     public void AlreadyPascalCaseKeysAreLeftAlone()
     {
@@ -89,6 +102,7 @@ public class SqlColumnNamingTests
             "iscurrent", "totalamount", "studentcount", "duedate", "eventdate",
             "hiredate", "admissiondate", "classname", "sectionname",
             "departmentname", "subjectname", "targetrole", "isread", "maxscore",
+            "studentname", "feename", "totalstudentsmarked",
         };
 
         foreach (var column in columns)
@@ -96,5 +110,20 @@ public class SqlColumnNamingTests
             var result = SqlColumnNaming.ToPascalCase(column);
             Assert.Matches("^[A-Z][A-Za-z0-9]*$", result);
         }
+    }
+
+    /// <summary>
+    /// Capitalising the first letter is a valid-looking answer that is wrong for
+    /// every squashed multi-word name, and the regex above accepts it. This pins
+    /// the specific shapes that naive capitalisation gets wrong, so the check
+    /// cannot be satisfied by "Studentname" passing as PascalCase.
+    /// </summary>
+    [Theory]
+    [InlineData("studentname", "Studentname")]
+    [InlineData("feename", "Feename")]
+    [InlineData("totalstudentsmarked", "Totalstudentsmarked")]
+    public void NaiveCapitalisationIsNotAnAcceptableResult(string folded, string naive)
+    {
+        Assert.NotEqual(naive, SqlColumnNaming.ToPascalCase(folded));
     }
 }
